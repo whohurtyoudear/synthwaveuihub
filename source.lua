@@ -194,6 +194,11 @@ function Window.new(title)
 
     return self
 end
+
+-- Add this at the end of Part 1
+_G.SynthwaveXLoaded = true
+return SynthwaveX
+
 -- Part 2: Tab System and Navigation
 
 -- Tab Class

@@ -393,29 +393,30 @@ function NebulaUI:CreateWindow(title, options)
     
     -- Initialize window methods
     function Window:SetTheme(newTheme)
-        theme = newTheme or SYNTHWAVE_PALETTE
-        Window.Theme = theme
-        
-        -- Update all elements with new theme
-        MainFrame.BackgroundColor3 = theme.DarkBackground
-        TitleBar.BackgroundColor3 = theme.Background
-        TitleLabel.TextColor3 = theme.Text
-        CloseButton.BackgroundColor3 = theme.Error
-        MinimizeButton.BackgroundColor3 = theme.Warning
-        PlayerInfo.BackgroundColor3 = theme.Background
-        GameInfo.BackgroundColor3 = theme.Background
-        DashboardTabButton.BackgroundColor3 = theme.Primary
-        
-        -- Update existing tabs and elements
-        for _, tab in pairs(Window.Tabs) do
-            if tab.Container then
-                tab.Container.BackgroundColor3 = theme.Background
-            end
-            if tab.Button then
-                tab.Button.BackgroundColor3 = (Window.CurrentTab == tab) and theme.Primary or theme.Secondary
-            end
+    -- Merge with default theme to ensure all colors exist
+    theme = setmetatable(newTheme or {}, {__index = SYNTHWAVE_PALETTE})
+    Window.Theme = theme
+    
+    -- Update all elements with new theme
+    if MainFrame then MainFrame.BackgroundColor3 = theme.DarkBackground or SYNTHWAVE_PALETTE.DarkBackground end
+    if TitleBar then TitleBar.BackgroundColor3 = theme.Background or SYNTHWAVE_PALETTE.Background end
+    if TitleLabel then TitleLabel.TextColor3 = theme.Text or SYNTHWAVE_PALETTE.Text end
+    if CloseButton then CloseButton.BackgroundColor3 = theme.Error or SYNTHWAVE_PALETTE.Error end
+    if MinimizeButton then MinimizeButton.BackgroundColor3 = theme.Warning or SYNTHWAVE_PALETTE.Warning end
+    if PlayerInfo then PlayerInfo.BackgroundColor3 = theme.Background or SYNTHWAVE_PALETTE.Background end
+    if GameInfo then GameInfo.BackgroundColor3 = theme.Background or SYNTHWAVE_PALETTE.Background end
+    if DashboardTabButton then DashboardTabButton.BackgroundColor3 = theme.Primary or SYNTHWAVE_PALETTE.Primary end
+    
+    -- Update existing tabs and elements
+    for _, tab in pairs(Window.Tabs) do
+        if tab.Container then
+            tab.Container.BackgroundColor3 = theme.Background or SYNTHWAVE_PALETTE.Background
+        end
+        if tab.Button then
+            tab.Button.BackgroundColor3 = (Window.CurrentTab == tab) and (theme.Primary or SYNTHWAVE_PALETTE.Primary) or (theme.Secondary or SYNTHWAVE_PALETTE.Secondary)
         end
     end
+end
     
     function Window:Minimize()
         Window.Minimized = true

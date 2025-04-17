@@ -1,0 +1,2112 @@
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TextService = game:GetService("TextService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
+-- Variables
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local SynthwaveHorizon = {}
+local UILoaded = false
+local DragInstances = {}
+local ToggleableInstances = {}
+local TabInstances = {}
+local ToggledUI = true
+
+-- Constants
+local SCREEN_GUI_NAME = "SynthwaveHorizonUI"
+local VERSION = "1.0.0"
+local ACCENT_COLOR = Color3.fromRGB(155, 135, 245)  -- Primary Purple
+local SECONDARY_COLOR = Color3.fromRGB(126, 105, 171)  -- Secondary Purple
+local TERTIARY_COLOR = Color3.fromRGB(214, 188, 250)  -- Light Purple
+local VIVID_COLOR = Color3.fromRGB(139, 92, 246)  -- Vivid Purple
+local MAGENTA_COLOR = Color3.fromRGB(217, 70, 239)  -- Magenta Pink
+local ORANGE_COLOR = Color3.fromRGB(249, 115, 22)  -- Bright Orange
+local BLUE_COLOR = Color3.fromRGB(30, 174, 219)  -- Bright Blue
+local SKY_COLOR = Color3.fromRGB(51, 195, 240)  -- Sky Blue
+local DARK_PURPLE = Color3.fromRGB(26, 31, 44)  -- Dark Purple
+local DARK_GRAY = Color3.fromRGB(34, 31, 38)  -- Dark Gray
+local BACKGROUND_COLOR = Color3.fromRGB(0, 0, 0, 0.9)  -- Black with transparency
+local TEXT_COLOR = Color3.fromRGB(255, 255, 255)
+local HOVER_COLOR = Color3.fromRGB(40, 40, 60)
+local HIGHLIGHT_COLOR = Color3.fromRGB(60, 60, 80)
+
+-- Utility Functions
+local function IsUILoaded()
+    return UILoaded
+end
+
+local function GetInstance(InstanceName)
+    if CoreGui:FindFirstChild(SCREEN_GUI_NAME) then
+        return CoreGui[SCREEN_GUI_NAME]:FindFirstChild(InstanceName, true)
+    end
+    return nil
+end
+
+local function GetMouseLocation()
+    return UserInputService:GetMouseLocation()
+end
+
+local function Tween(instance, properties, duration, easingStyle, easingDirection, repeatCount, reverses, delay)
+    duration = duration or 0.2
+    easingStyle = easingStyle or Enum.EasingStyle.Quad
+    easingDirection = easingDirection or Enum.EasingDirection.Out
+    repeatCount = repeatCount or 0
+    reverses = reverses or false
+    delay = delay or 0
+    
+    local tween = TweenService:Create(
+        instance,
+        TweenInfo.new(duration, easingStyle, easingDirection, repeatCount, reverses, delay),
+        properties
+    )
+    
+    tween:Play()
+    return tween
+end
+
+local function CreateInterfaceInstance(instanceType, instanceName, parent)
+    local instance = Instance.new(instanceType)
+    instance.Name = instanceName
+    instance.Parent = parent
+    return instance
+end
+
+local function CreateDraggableInstance(instance, dragArea, boundaries)
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+    
+    local function Update(input)
+        local delta = input.Position - dragStart
+        local newPosition = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        
+        -- Apply boundaries if provided
+        if boundaries then
+            local minX, maxX = boundaries.MinX or -math.huge, boundaries.MaxX or math.huge
+            local minY, maxY = boundaries.MinY or -math.huge, boundaries.MaxY or math.huge
+            
+            newPosition = UDim2.new(
+                startPos.X.Scale,
+                math.clamp(startPos.X.Offset + delta.X, minX, maxX),
+                startPos.Y.Scale,
+                math.clamp(startPos.Y.Offset + delta.Y, minY, maxY)
+            )
+        end
+        
+        Tween(instance, {Position = newPosition}, 0.1)
+    end
+    
+    dragArea.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = instance.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    dragArea.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input == dragInput or input.UserInputType == Enum.UserInputType.Touch) then
+            Update(input)
+        end
+    end)
+    
+    table.insert(DragInstances, {Instance = instance, DragArea = dragArea})
+    return instance
+end
+
+local function CreateNeonGradient(parent, color1, color2, rotation)
+    local uiGradient = Instance.new("UIGradient")
+    uiGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, color1 or ACCENT_COLOR),
+        ColorSequenceKeypoint.new(1, color2 or MAGENTA_COLOR)
+    })
+    uiGradient.Rotation = rotation or 45
+    uiGradient.Parent = parent
+    return uiGradient
+end
+
+local function RoundNumber(number, decimalPlaces)
+    local multiplier = 10 ^ (decimalPlaces or 0)
+    return math.floor(number * multiplier + 0.5) / multiplier
+end
+
+local function CreateRippleEffect(button, color)
+    local ripple = Instance.new("Frame")
+    ripple.Name = "Ripple"
+    ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+    ripple.BackgroundColor3 = color or Color3.fromRGB(255, 255, 255)
+    ripple.BackgroundTransparency = 0.8
+    ripple.Position = UDim2.fromScale(0.5, 0.5)
+    ripple.Size = UDim2.fromScale(0, 0)
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = ripple
+    
+    ripple.Parent = button
+    
+    -- Calculate distance to farthest corner
+    local buttonSize = button.AbsoluteSize
+    local maxDistance = math.sqrt(buttonSize.X^2 + buttonSize.Y^2)
+    
+    -- Tween ripple to fill the button
+    Tween(ripple, {
+        Size = UDim2.fromScale(1.5, 1.5),
+        BackgroundTransparency = 1
+    }, 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, 0)
+    
+    -- Remove the ripple after animation
+    task.delay(0.5, function()
+        ripple:Destroy()
+    end)
+end
+
+local function CreateUICorner(parent, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 4)
+    corner.Parent = parent
+    return corner
+end
+
+local function CreateStroke(parent, color, thickness, transparency)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color or ACCENT_COLOR
+    stroke.Thickness = thickness or 1
+    stroke.Transparency = transparency or 0
+    stroke.Parent = parent
+    return stroke
+end
+
+local function CreateShadow(parent, size)
+    local shadow = Instance.new("ImageLabel")
+    shadow.Name = "Shadow"
+    shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+    shadow.BackgroundTransparency = 1
+    shadow.Position = UDim2.fromScale(0.5, 0.5)
+    shadow.Size = UDim2.new(1, size or 20, 1, size or 20)
+    shadow.ZIndex = parent.ZIndex - 1
+    shadow.Image = "rbxassetid://6014261993"
+    shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.ImageTransparency = 0.5
+    shadow.ScaleType = Enum.ScaleType.Slice
+    shadow.SliceCenter = Rect.new(49, 49, 450, 450)
+    shadow.Parent = parent
+    return shadow
+end
+
+local function CreatePadding(parent, top, right, bottom, left)
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, top or 0)
+    padding.PaddingRight = UDim.new(0, right or 0)
+    padding.PaddingBottom = UDim.new(0, bottom or 0)
+    padding.PaddingLeft = UDim.new(0, left or 0)
+    padding.Parent = parent
+    return padding
+end
+
+local function CreateText(parent, text, size, color, font, xAlignment, yAlignment)
+    local textLabel = Instance.new("TextLabel")
+    textLabel.BackgroundTransparency = 1
+    textLabel.Size = UDim2.new(1, 0, 0, size or 20)
+    textLabel.Font = font or Enum.Font.GothamBold
+    textLabel.Text = text or ""
+    textLabel.TextColor3 = color or TEXT_COLOR
+    textLabel.TextSize = size or 14
+    textLabel.TextXAlignment = xAlignment or Enum.TextXAlignment.Left
+    textLabel.TextYAlignment = yAlignment or Enum.TextYAlignment.Center
+    textLabel.Parent = parent
+    return textLabel
+end
+
+local function CreateSmoothScrollingFrame(parent, size, position, layoutOrder)
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.BackgroundTransparency = 1
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.Size = size or UDim2.new(1, 0, 1, 0)
+    scrollFrame.Position = position or UDim2.new(0, 0, 0, 0)
+    scrollFrame.LayoutOrder = layoutOrder or 0
+    scrollFrame.ScrollBarThickness = 2
+    scrollFrame.ScrollBarImageColor3 = ACCENT_COLOR
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    scrollFrame.Parent = parent
+    
+    -- Add padding
+    CreatePadding(scrollFrame, 8, 8, 8, 8)
+    
+    -- Add list layout
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 10)
+    listLayout.Parent = scrollFrame
+    
+    return scrollFrame
+end
+
+-- Functions for getting player and game information
+local function GetPlayerThumbnail(player)
+    local userId = player.UserId
+    local thumbnailType = Enum.ThumbnailType.HeadShot
+    local thumbnailSize = Enum.ThumbnailSize.Size420x420
+    local content = nil
+    local isReady = false
+    
+    pcall(function()
+        content, isReady = Players:GetUserThumbnailAsync(userId, thumbnailType, thumbnailSize)
+    end)
+    
+    if content and isReady then
+        return content
+    else
+        return "rbxassetid://7962146544" -- Default placeholder
+    end
+end
+
+local function GetGameInfo()
+    local info = {}
+    
+    pcall(function()
+        info.PlaceId = game.PlaceId
+        info.PlaceName = MarketplaceService and MarketplaceService:GetProductInfo(game.PlaceId).Name or "Unknown Game"
+        info.JobId = game.JobId
+        info.Players = #Players:GetPlayers()
+        info.MaxPlayers = Players.MaxPlayers
+    end)
+    
+    return info
+end
+
+local function GetKeyCodeString(keyCode)
+    if keyCode == Enum.KeyCode.Unknown then
+        return "Unknown"
+    end
+    
+    return tostring(keyCode):gsub("Enum.KeyCode.", "")
+end
+
+-- Main Interface Creation
+local function CreateInterface(name)
+    -- Check if UI already exists and remove it
+    if CoreGui:FindFirstChild(SCREEN_GUI_NAME) then
+        CoreGui:FindFirstChild(SCREEN_GUI_NAME):Destroy()
+    end
+    
+    -- Create the main ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = SCREEN_GUI_NAME
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    
+    -- Set parent based on environment
+    local success, result = pcall(function()
+        return gethui()
+    end)
+    
+    if success and result then
+        screenGui.Parent = result
+    else
+        screenGui.Parent = CoreGui
+    end
+    
+    -- Create main container
+    local mainContainer = CreateInterfaceInstance("Frame", "MainContainer", screenGui)
+    mainContainer.Size = UDim2.new(0, 800, 0, 500)
+    mainContainer.Position = UDim2.new(0.5, -400, 0.5, -250)
+    mainContainer.BackgroundColor3 = DARK_PURPLE
+    CreateUICorner(mainContainer, 8)
+    CreateShadow(mainContainer, 30)
+    
+    -- Create draggable functionality
+    local topBar = CreateInterfaceInstance("Frame", "TopBar", mainContainer)
+    topBar.Size = UDim2.new(1, 0, 0, 40)
+    topBar.BackgroundColor3 = DARK_GRAY
+    topBar.BorderSizePixel = 0
+    
+    local topCorner = CreateUICorner(topBar, 8)
+    
+    -- Special ClipDescendants effect for the top corners
+    local clipFrame = CreateInterfaceInstance("Frame", "ClipFrame", mainContainer)
+    clipFrame.Size = UDim2.new(1, 0, 0, 40)
+    clipFrame.BackgroundColor3 = DARK_GRAY
+    clipFrame.BorderSizePixel = 0
+    clipFrame.ZIndex = topBar.ZIndex - 1
+    clipFrame.ClipsDescendants = false
+    
+    -- Make the main container draggable
+    CreateDraggableInstance(mainContainer, topBar)
+    
+    -- Add title text
+    local titleText = CreateText(topBar, name or "Synthwave Horizon", 18, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+    titleText.Size = UDim2.new(0.5, 0, 1, 0)
+    titleText.Position = UDim2.new(0, 15, 0, 0)
+    
+    -- Create neon underline for title
+    local underline = CreateInterfaceInstance("Frame", "Underline", topBar)
+    underline.Size = UDim2.new(0, titleText.TextBounds.X, 0, 2)
+    underline.Position = UDim2.new(0, 15, 1, -2)
+    underline.BackgroundColor3 = ACCENT_COLOR
+    underline.BorderSizePixel = 0
+    CreateNeonGradient(underline, ACCENT_COLOR, MAGENTA_COLOR, 90)
+    
+    -- Version text
+    local versionText = CreateText(topBar, "v" .. VERSION, 12, TERTIARY_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Right)
+    versionText.Size = UDim2.new(0, 50, 1, 0)
+    versionText.Position = UDim2.new(1, -125, 0, 0)
+    
+    -- Create close button
+    local closeButton = CreateInterfaceInstance("TextButton", "CloseButton", topBar)
+    closeButton.Size = UDim2.new(0, 30, 0, 30)
+    closeButton.Position = UDim2.new(1, -40, 0, 5)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+    closeButton.Text = ""
+    CreateUICorner(closeButton, 15)
+    
+    -- X symbol for close button
+    local xSymbol = CreateText(closeButton, "×", 20, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+    xSymbol.Size = UDim2.new(1, 0, 1, 0)
+    
+    -- Add hover effect
+    closeButton.MouseEnter:Connect(function()
+        Tween(closeButton, {BackgroundColor3 = Color3.fromRGB(255, 100, 100)}, 0.2)
+    end)
+    
+    closeButton.MouseLeave:Connect(function()
+        Tween(closeButton, {BackgroundColor3 = Color3.fromRGB(255, 80, 80)}, 0.2)
+    end)
+    
+    -- Add click effect and functionality
+    closeButton.MouseButton1Click:Connect(function()
+        CreateRippleEffect(closeButton, Color3.fromRGB(200, 200, 200))
+        Tween(mainContainer, {Size = UDim2.new(0, mainContainer.Size.X.Offset, 0, 0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        Tween(mainContainer, {BackgroundTransparency = 1}, 0.3)
+        
+        for _, v in pairs(mainContainer:GetDescendants()) do
+            if v:IsA("Frame") or v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("ImageLabel") or v:IsA("ImageButton") or v:IsA("ScrollingFrame") then
+                Tween(v, {BackgroundTransparency = 1}, 0.3)
+                if v:IsA("TextLabel") or v:IsA("TextButton") then
+                    Tween(v, {TextTransparency = 1}, 0.3)
+                end
+                if v:IsA("ImageLabel") or v:IsA("ImageButton") then
+                    Tween(v, {ImageTransparency = 1}, 0.3)
+                end
+            end
+        end
+        
+        task.wait(0.35)
+        screenGui:Destroy()
+    end)
+    
+    -- Create minimize button
+    local minimizeButton = CreateInterfaceInstance("TextButton", "MinimizeButton", topBar)
+    minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    minimizeButton.Position = UDim2.new(1, -80, 0, 5)
+    minimizeButton.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
+    minimizeButton.Text = ""
+    CreateUICorner(minimizeButton, 15)
+    
+    -- Minimize symbol
+    local minSymbol = CreateText(minimizeButton, "─", 16, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+    minSymbol.Size = UDim2.new(1, 0, 1, 0)
+    
+    -- Add hover effect
+    minimizeButton.MouseEnter:Connect(function()
+        Tween(minimizeButton, {BackgroundColor3 = Color3.fromRGB(255, 220, 70)}, 0.2)
+    end)
+    
+    minimizeButton.MouseLeave:Connect(function()
+        Tween(minimizeButton, {BackgroundColor3 = Color3.fromRGB(255, 200, 50)}, 0.2)
+    end)
+    
+    -- Store original size
+    local originalSize = mainContainer.Size
+    local minimized = false
+    
+    -- Add click effect and functionality
+    minimizeButton.MouseButton1Click:Connect(function()
+        CreateRippleEffect(minimizeButton, Color3.fromRGB(200, 200, 200))
+        minimized = not minimized
+        
+        if minimized then
+            -- Minimize
+            Tween(mainContainer, {Size = UDim2.new(0, originalSize.X.Offset, 0, 40)}, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            for _, v in pairs(mainContainer:GetDescendants()) do
+                if v.Name ~= "TopBar" and v.Parent.Name ~= "TopBar" and v.Parent.Parent.Name ~= "TopBar" then
+                    if v:IsA("Frame") or v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("ImageLabel") or v:IsA("ImageButton") or v:IsA("ScrollingFrame") then
+                        v.Visible = false
+                    end
+                end
+            end
+        else
+            -- Restore
+            Tween(mainContainer, {Size = originalSize}, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            task.wait(0.1)
+            for _, v in pairs(mainContainer:GetDescendants()) do
+                if v.Name ~= "TopBar" and v.Parent.Name ~= "TopBar" and v.Parent.Parent.Name ~= "TopBar" then
+                    if v:IsA("Frame") or v:IsA("TextLabel") or v:IsA("TextButton") or v:IsA("ImageLabel") or v:IsA("ImageButton") or v:IsA("ScrollingFrame") then
+                        v.Visible = true
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- Content container (tabs and tab content)
+    local contentContainer = CreateInterfaceInstance("Frame", "ContentContainer", mainContainer)
+    contentContainer.Size = UDim2.new(1, 0, 1, -40)
+    contentContainer.Position = UDim2.new(0, 0, 0, 40)
+    contentContainer.BackgroundTransparency = 1
+    
+    -- Sidebar for tabs
+    local sidebar = CreateInterfaceInstance("Frame", "Sidebar", contentContainer)
+    sidebar.Size = UDim2.new(0, 180, 1, 0)
+    sidebar.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    sidebar.BorderSizePixel = 0
+    
+    local sidebarCorner = CreateUICorner(sidebar, 8)
+    
+    -- Create clip effect for bottom corners of sidebar
+    local sidebarClip = CreateInterfaceInstance("Frame", "SidebarClip", contentContainer)
+    sidebarClip.Size = UDim2.new(0, 180, 0.5, 0)
+    sidebarClip.Position = UDim2.new(0, 0, 0.5, 0)
+    sidebarClip.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    sidebarClip.BorderSizePixel = 0
+    sidebarClip.ZIndex = sidebar.ZIndex - 1
+    sidebarClip.ClipsDescendants = false
+    
+    -- Add neon accent to the sidebar
+    local sidebarAccent = CreateInterfaceInstance("Frame", "SidebarAccent", sidebar)
+    sidebarAccent.Size = UDim2.new(0, 4, 1, 0)
+    sidebarAccent.BackgroundColor3 = ACCENT_COLOR
+    sidebarAccent.BorderSizePixel = 0
+    CreateNeonGradient(sidebarAccent, ACCENT_COLOR, MAGENTA_COLOR, 90)
+    
+    -- Player info area
+    local playerInfo = CreateInterfaceInstance("Frame", "PlayerInfo", sidebar)
+    playerInfo.Size = UDim2.new(1, 0, 0, 100)
+    playerInfo.BackgroundTransparency = 1
+    
+    -- Player avatar
+    local avatarContainer = CreateInterfaceInstance("Frame", "AvatarContainer", playerInfo)
+    avatarContainer.Size = UDim2.new(0, 70, 0, 70)
+    avatarContainer.Position = UDim2.new(0, 15, 0, 15)
+    avatarContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    CreateUICorner(avatarContainer, 35)
+    
+    local avatarImage = CreateInterfaceInstance("ImageLabel", "AvatarImage", avatarContainer)
+    avatarImage.Size = UDim2.new(1, -4, 1, -4)
+    avatarImage.Position = UDim2.new(0, 2, 0, 2)
+    avatarImage.BackgroundTransparency = 1
+    avatarImage.Image = GetPlayerThumbnail(LocalPlayer)
+    CreateUICorner(avatarImage, 35)
+    
+    -- Animated glow around avatar
+    local avatarGlow = CreateInterfaceInstance("UIStroke", "AvatarGlow", avatarContainer)
+    avatarGlow.Color = ACCENT_COLOR
+    avatarGlow.Thickness = 2
+    avatarGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    
+    -- Glow animation
+    coroutine.wrap(function()
+        while true do
+            Tween(avatarGlow, {Color = ACCENT_COLOR}, 2)
+            task.wait(2)
+            Tween(avatarGlow, {Color = MAGENTA_COLOR}, 2)
+            task.wait(2)
+            Tween(avatarGlow, {Color = BLUE_COLOR}, 2)
+            task.wait(2)
+        end
+    end)()
+    
+    -- Player name and display name
+    local playerName = CreateText(playerInfo, "@" .. LocalPlayer.Name, 12, TERTIARY_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Left)
+    playerName.Size = UDim2.new(0, 100, 0, 20)
+    playerName.Position = UDim2.new(0, 95, 0, 25)
+    playerName.TextTruncate = Enum.TextTruncate.AtEnd
+    
+    local playerDisplayName = CreateText(playerInfo, LocalPlayer.DisplayName, 16, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+    playerDisplayName.Size = UDim2.new(0, 100, 0, 20)
+    playerDisplayName.Position = UDim2.new(0, 95, 0, 45)
+    playerDisplayName.TextTruncate = Enum.TextTruncate.AtEnd
+    
+    -- Separator line
+    local separator = CreateInterfaceInstance("Frame", "Separator", sidebar)
+    separator.Size = UDim2.new(1, -30, 0, 2)
+    separator.Position = UDim2.new(0, 15, 0, 120)
+    separator.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    CreateNeonGradient(separator, Color3.fromRGB(40, 40, 60), Color3.fromRGB(30, 30, 50), 90)
+    
+    -- Game info
+    local gameInfo = GetGameInfo()
+    local gameInfoContainer = CreateInterfaceInstance("Frame", "GameInfo", sidebar)
+    gameInfoContainer.Size = UDim2.new(1, 0, 0, 70)
+    gameInfoContainer.Position = UDim2.new(0, 0, 0, 125)
+    gameInfoContainer.BackgroundTransparency = 1
+    
+    local gameTitle = CreateText(gameInfoContainer, gameInfo.PlaceName or "Unknown Game", 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+    gameTitle.Size = UDim2.new(1, -30, 0, 20)
+    gameTitle.Position = UDim2.new(0, 15, 0, 5)
+    gameTitle.TextTruncate = Enum.TextTruncate.AtEnd
+    
+    local placeIdText = CreateText(gameInfoContainer, "Place ID: " .. (gameInfo.PlaceId or "N/A"), 12, TERTIARY_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Left)
+    placeIdText.Size = UDim2.new(1, -30, 0, 20)
+    placeIdText.Position = UDim2.new(0, 15, 0, 25)
+    
+    local playersText = CreateText(gameInfoContainer, "Players: " .. (gameInfo.Players or "?") .. "/" .. (gameInfo.MaxPlayers or "?"), 12, TERTIARY_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Left)
+    playersText.Size = UDim2.new(1, -30, 0, 20)
+    playersText.Position = UDim2.new(0, 15, 0, 45)
+    
+    -- Second separator line
+    local separator2 = CreateInterfaceInstance("Frame", "Separator2", sidebar)
+    separator2.Size = UDim2.new(1, -30, 0, 2)
+    separator2.Position = UDim2.new(0, 15, 0, 200)
+    separator2.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    CreateNeonGradient(separator2, Color3.fromRGB(40, 40, 60), Color3.fromRGB(30, 30, 50), 90)
+    
+    -- Tabs container (scrollable)
+    local tabsContainer = CreateSmoothScrollingFrame(sidebar, UDim2.new(1, 0, 1, -220), UDim2.new(0, 0, 0, 220))
+    tabsContainer.BackgroundTransparency = 1
+    tabsContainer.ScrollBarThickness = 2
+    
+    -- Tab content container
+    local tabContentContainer = CreateInterfaceInstance("Frame", "TabContent", contentContainer)
+    tabContentContainer.Size = UDim2.new(1, -190, 1, -10)
+    tabContentContainer.Position = UDim2.new(0, 185, 0, 5)
+    tabContentContainer.BackgroundTransparency = 1
+    
+    -- Interface object to return
+    local interface = {}
+    interface.MainGui = screenGui
+    interface.Container = mainContainer
+    interface.Sidebar = sidebar
+    interface.TabsContainer = tabsContainer
+    interface.TabContentContainer = tabContentContainer
+    interface.Tabs = {}
+    interface.ActiveTab = nil
+    
+    -- Tab creation function
+    function interface:Tab(tabName)
+        -- Create tab button
+        local tabButton = CreateInterfaceInstance("TextButton", tabName.."Tab", tabsContainer)
+        tabButton.Size = UDim2.new(1, -20, 0, 40)
+        tabButton.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+        tabButton.BackgroundTransparency = 0.5
+        tabButton.Text = ""
+        CreateUICorner(tabButton, 6)
+        
+        -- Tab icon (placeholder for now)
+        local tabIcon = CreateInterfaceInstance("ImageLabel", "Icon", tabButton)
+        tabIcon.Size = UDim2.new(0, 20, 0, 20)
+        tabIcon.Position = UDim2.new(0, 10, 0, 10)
+        tabIcon.BackgroundTransparency = 1
+        tabIcon.Image = "rbxassetid://7733964719" -- Generic icon, can be customized per tab
+        tabIcon.ImageColor3 = TERTIARY_COLOR
+        
+        -- Tab name
+        local tabText = CreateText(tabButton, tabName, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+        tabText.Size = UDim2.new(1, -40, 1, 0)
+        tabText.Position = UDim2.new(0, 40, 0, 0)
+        
+        -- Tab indicator
+        local tabIndicator = CreateInterfaceInstance("Frame", "Indicator", tabButton)
+        tabIndicator.Size = UDim2.new(0, 3, 0, 20)
+        tabIndicator.Position = UDim2.new(0, 0, 0.5, -10)
+        tabIndicator.BackgroundColor3 = ACCENT_COLOR
+        tabIndicator.BackgroundTransparency = 1
+        tabIndicator.Visible = false
+        CreateNeonGradient(tabIndicator, ACCENT_COLOR, MAGENTA_COLOR, 90)
+        
+        -- Create tab content
+        local tabContent = CreateInterfaceInstance("Frame", tabName.."Content", tabContentContainer)
+        tabContent.Size = UDim2.new(1, 0, 1, 0)
+        tabContent.BackgroundTransparency = 1
+        tabContent.Visible = false
+        
+        -- Tab content scrolling frame
+        local scrollContent = CreateSmoothScrollingFrame(tabContent, UDim2.new(1, 0, 1, 0))
+        scrollContent.BackgroundTransparency = 1
+        
+        -- Store tab data
+        local tab = {
+            Button = tabButton,
+            Content = tabContent,
+            ScrollFrame = scrollContent,
+            Name = tabName,
+            Sections = {}
+        }
+        
+        table.insert(interface.Tabs, tab)
+        
+        -- Tab button hover effect
+        tabButton.MouseEnter:Connect(function()
+            if interface.ActiveTab ~= tab then
+                Tween(tabButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 60)}, 0.2)
+            end
+        end)
+        
+        tabButton.MouseLeave:Connect(function()
+            if interface.ActiveTab ~= tab then
+                Tween(tabButton, {BackgroundColor3 = Color3.fromRGB(30, 30, 40)}, 0.2)
+            end
+        end)
+        
+        -- Tab button click effect
+        tabButton.MouseButton1Click:Connect(function()
+            CreateRippleEffect(tabButton)
+            interface:SelectTab(tab)
+        end)
+        
+        -- Tab selection by default if first tab
+        if #interface.Tabs == 1 then
+            interface:SelectTab(tab)
+        end
+        
+        -- Section creation function
+        function tab:Section(sectionName)
+            local sectionContainer = CreateInterfaceInstance("Frame", sectionName.."Section", scrollContent)
+            sectionContainer.Size = UDim2.new(1, -20, 0, 30) -- Initial size, will expand
+            sectionContainer.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+            CreateUICorner(sectionContainer, 8)
+            
+            -- Add section shadow
+            CreateShadow(sectionContainer, 15)
+            
+            -- Section header
+            local sectionHeader = CreateInterfaceInstance("Frame", "Header", sectionContainer)
+            sectionHeader.Size = UDim2.new(1, 0, 0, 30)
+            sectionHeader.BackgroundTransparency = 1
+            
+            -- Section name
+            local sectionText = CreateText(sectionHeader, sectionName, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+            sectionText.Size = UDim2.new(1, -20, 1, 0)
+            sectionText.Position = UDim2.new(0, 10, 0, 0)
+            
+            -- Section content
+            local sectionContent = CreateInterfaceInstance("Frame", "Content", sectionContainer)
+            sectionContent.Size = UDim2.new(1, 0, 0, 0) -- Will be resized dynamically
+            sectionContent.Position = UDim2.new(0, 0, 0, 30)
+            sectionContent.BackgroundTransparency = 1
+            
+            -- Add section layout
+            local sectionLayout = Instance.new("UIListLayout")
+            sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            sectionLayout.Padding = UDim.new(0, 10)
+            sectionLayout.Parent = sectionContent
+            
+            -- Add section padding
+            CreatePadding(sectionContent, 10, 10, 10, 10)
+            
+            -- Section data object
+            local section = {
+                Container = sectionContainer,
+                Content = sectionContent,
+                Header = sectionHeader,
+                Name = sectionName,
+                Elements = {}
+            }
+            
+            -- Update section size based on content
+            local function updateSectionSize()
+                local contentSize = sectionLayout.AbsoluteContentSize.Y + 20
+                sectionContent.Size = UDim2.new(1, 0, 0, contentSize)
+                sectionContainer.Size = UDim2.new(1, -20, 0, contentSize + 30)
+                
+                task.wait() -- Wait for layout to update
+                scrollContent.CanvasSize = UDim2.new(0, 0, 0, scrollContent.UIListLayout.AbsoluteContentSize.Y + 20)
+            end
+            
+            -- Connect to child added/removed events
+            sectionContent.ChildAdded:Connect(updateSectionSize)
+            sectionContent.ChildRemoved:Connect(updateSectionSize)
+            
+            -- Add section to tab
+            table.insert(tab.Sections, section)
+            
+            -- Button element
+            function section:Button(text, callback)
+                callback = callback or function() end
+                
+                local buttonElement = CreateInterfaceInstance("TextButton", text.."Button", sectionContent)
+                buttonElement.Size = UDim2.new(1, 0, 0, 40)
+                buttonElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                buttonElement.Text = ""
+                CreateUICorner(buttonElement, 6)
+                
+                -- Button text
+                local buttonText = CreateText(buttonElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                buttonText.Size = UDim2.new(1, -20, 1, 0)
+                buttonText.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Hover effects
+                buttonElement.MouseEnter:Connect(function()
+                    Tween(buttonElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                buttonElement.MouseLeave:Connect(function()
+                    Tween(buttonElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Click effect
+                buttonElement.MouseButton1Click:Connect(function()
+                    CreateRippleEffect(buttonElement)
+                    Tween(buttonElement, {BackgroundColor3 = Color3.fromRGB(55, 55, 70)}, 0.1)
+                    
+                    -- Execute callback after a small delay for visual effect
+                    task.spawn(function()
+                        task.wait(0.1)
+                        callback()
+                        Tween(buttonElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.1)
+                    end)
+                end)
+                
+                -- Add button to elements
+                table.insert(section.Elements, buttonElement)
+                updateSectionSize()
+                
+                -- Return button element
+                local button = {
+                    Instance = buttonElement,
+                    Text = buttonText
+                }
+                
+                function button:SetText(newText)
+                    buttonText.Text = newText
+                end
+                
+                return button
+            end
+            
+            -- Toggle element
+            function section:Toggle(text, default, callback)
+                callback = callback or function() end
+                default = default or false
+                
+                local toggleElement = CreateInterfaceInstance("Frame", text.."Toggle", sectionContent)
+                toggleElement.Size = UDim2.new(1, 0, 0, 40)
+                toggleElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                CreateUICorner(toggleElement, 6)
+                
+                -- Toggle text
+                local toggleText = CreateText(toggleElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                toggleText.Size = UDim2.new(1, -60, 1, 0)
+                toggleText.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Toggle switch background
+                local toggleBackground = CreateInterfaceInstance("Frame", "Background", toggleElement)
+                toggleBackground.Size = UDim2.new(0, 40, 0, 20)
+                toggleBackground.Position = UDim2.new(1, -50, 0.5, -10)
+                toggleBackground.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+                CreateUICorner(toggleBackground, 10)
+                
+                -- Toggle switch handle
+                local toggleHandle = CreateInterfaceInstance("Frame", "Handle", toggleBackground)
+                toggleHandle.Size = UDim2.new(0, 16, 0, 16)
+                toggleHandle.Position = UDim2.new(0, 2, 0.5, -8)
+                toggleHandle.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+                CreateUICorner(toggleHandle, 8)
+                
+                -- Add glow to handle
+                local handleGlow = CreateStroke(toggleHandle, ACCENT_COLOR, 1, 0.5)
+                
+                -- Toggle functionality
+                local toggled = default
+                local toggleButton = CreateInterfaceInstance("TextButton", "ToggleButton", toggleElement)
+                toggleButton.Size = UDim2.new(1, 0, 1, 0)
+                toggleButton.BackgroundTransparency = 1
+                toggleButton.Text = ""
+                
+                -- Hover effect
+                toggleButton.MouseEnter:Connect(function()
+                    Tween(toggleElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                toggleButton.MouseLeave:Connect(function()
+                    Tween(toggleElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Update toggle visuals
+                local function updateToggle()
+                    if toggled then
+                        Tween(toggleHandle, {Position = UDim2.new(0, 22, 0.5, -8)}, 0.2)
+                        Tween(toggleBackground, {BackgroundColor3 = ACCENT_COLOR}, 0.2)
+                        Tween(toggleHandle, {BackgroundColor3 = Color3.fromRGB(240, 240, 240)}, 0.2)
+                    else
+                        Tween(toggleHandle, {Position = UDim2.new(0, 2, 0.5, -8)}, 0.2)
+                        Tween(toggleBackground, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                        Tween(toggleHandle, {BackgroundColor3 = Color3.fromRGB(200, 200, 200)}, 0.2)
+                    end
+                end
+                
+                -- Set initial state
+                updateToggle()
+                
+                -- Click functionality
+                toggleButton.MouseButton1Click:Connect(function()
+                    toggled = not toggled
+                    updateToggle()
+                    
+                    -- Ripple effect
+                    CreateRippleEffect(toggleElement)
+                    callback(toggled)
+                end)
+                
+                -- Add toggle to elements
+                table.insert(section.Elements, toggleElement)
+                updateSectionSize()
+                
+                -- Return toggle element with methods
+                local toggle = {
+                    Instance = toggleElement,
+                    Background = toggleBackground,
+                    Handle = toggleHandle,
+                    Value = toggled
+                }
+                
+                function toggle:SetValue(value)
+                    toggled = value
+                    toggle.Value = value
+                    updateToggle()
+                    callback(toggled)
+                end
+                
+                function toggle:GetValue()
+                    return toggled
+                end
+                
+                return toggle
+            end
+            
+            -- Slider element
+            function section:Slider(text, min, max, default, callback)
+                min = min or 0
+                max = max or 100
+                default = default or min
+                callback = callback or function() end
+                
+                local sliderElement = CreateInterfaceInstance("Frame", text.."Slider", sectionContent)
+                sliderElement.Size = UDim2.new(1, 0, 0, 60)
+                sliderElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                CreateUICorner(sliderElement, 6)
+                
+                -- Slider text
+                local sliderText = CreateText(sliderElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                sliderText.Size = UDim2.new(1, -20, 0, 20)
+                sliderText.Position = UDim2.new(0, 10, 0, 5)
+                
+                -- Value display
+                local valueText = CreateText(sliderElement, tostring(default), 14, TERTIARY_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+                valueText.Size = UDim2.new(1, -20, 0, 20)
+                valueText.Position = UDim2.new(0, 10, 0, 5)
+                
+                -- Slider background
+                local sliderBackground = CreateInterfaceInstance("Frame", "Background", sliderElement)
+                sliderBackground.Size = UDim2.new(1, -20, 0, 6)
+                sliderBackground.Position = UDim2.new(0, 10, 0, 35)
+                sliderBackground.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+                CreateUICorner(sliderBackground, 3)
+                
+                -- Slider fill
+                local sliderFill = CreateInterfaceInstance("Frame", "Fill", sliderBackground)
+                sliderFill.Size = UDim2.new(0, 0, 1, 0)
+                sliderFill.BackgroundColor3 = ACCENT_COLOR
+                CreateUICorner(sliderFill, 3)
+                CreateNeonGradient(sliderFill, ACCENT_COLOR, MAGENTA_COLOR, 90)
+                
+                -- Slider handle
+                local sliderHandle = CreateInterfaceInstance("Frame", "Handle", sliderBackground)
+                sliderHandle.Size = UDim2.new(0, 12, 0, 12)
+                sliderHandle.Position = UDim2.new(0, -6, 0.5, -6)
+                sliderHandle.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+                sliderHandle.ZIndex = 3
+                CreateUICorner(sliderHandle, 6)
+                
+                -- Add glow to handle
+                local handleGlow = CreateStroke(sliderHandle, ACCENT_COLOR, 1, 0.5)
+                
+                -- Slider functionality
+                local value = default
+                local dragging = false
+                
+                -- Convert value to position
+                local function valueToPosition(val)
+                    return ((val - min) / (max - min))
+                end
+                
+                -- Convert position to value
+                local function positionToValue(position)
+                    return min + (max - min) * position
+                end
+                
+                -- Update slider visuals
+                local function updateSlider(val)
+                    -- Clamp value between min and max
+                    val = math.clamp(val, min, max)
+                    
+                    -- Calculate position (0-1)
+                    local position = valueToPosition(val)
+                    
+                    -- Update slider fill and handle
+                    sliderFill.Size = UDim2.new(position, 0, 1, 0)
+                    sliderHandle.Position = UDim2.new(position, -6, 0.5, -6)
+                    
+                    -- Round value for display
+                    local roundedValue = RoundNumber(val, 2)
+                    valueText.Text = tostring(roundedValue)
+                    
+                    -- Return the actual value
+                    return val
+                end
+                
+                -- Set initial value
+                updateSlider(default)
+                
+                -- Mouse events for dragging
+                sliderBackground.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        -- Calculate new value based on mouse position
+                        local backgroundSize = sliderBackground.AbsoluteSize.X
+                        local relativePosition = math.clamp((input.Position.X - sliderBackground.AbsolutePosition.X) / backgroundSize, 0, 1)
+                        value = positionToValue(relativePosition)
+                        value = updateSlider(value)
+                        
+                        -- Call callback
+                        callback(value)
+                        
+                        -- Start dragging
+                        dragging = true
+                    end
+                end)
+                
+                sliderBackground.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        dragging = false
+                    end
+                end)
+                
+                UserInputService.InputChanged:Connect(function(input)
+                    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                        -- Calculate new value based on mouse position
+                        local backgroundSize = sliderBackground.AbsoluteSize.X
+                        local relativePosition = math.clamp((input.Position.X - sliderBackground.AbsolutePosition.X) / backgroundSize, 0, 1)
+                        value = positionToValue(relativePosition)
+                        value = updateSlider(value)
+                        
+                        -- Call callback
+                        callback(value)
+                    end
+                end)
+                
+                -- Hover effect
+                sliderElement.MouseEnter:Connect(function()
+                    Tween(sliderElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                sliderElement.MouseLeave:Connect(function()
+                    Tween(sliderElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Add slider to elements
+                table.insert(section.Elements, sliderElement)
+                updateSectionSize()
+                
+                -- Return slider element with methods
+                local slider = {
+                    Instance = sliderElement,
+                    Background = sliderBackground,
+                    Fill = sliderFill,
+                    Handle = sliderHandle,
+                    Value = value
+                }
+                
+                function slider:SetValue(val)
+                    value = math.clamp(val, min, max)
+                    slider.Value = value
+                    updateSlider(value)
+                    callback(value)
+                end
+                
+                function slider:GetValue()
+                    return value
+                end
+                
+                return slider
+            end
+            
+            -- Dropdown element
+            function section:Dropdown(text, options, callback)
+                options = options or {}
+                callback = callback or function() end
+                
+                local dropdownElement = CreateInterfaceInstance("Frame", text.."Dropdown", sectionContent)
+                dropdownElement.Size = UDim2.new(1, 0, 0, 40)
+                dropdownElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                CreateUICorner(dropdownElement, 6)
+                
+                -- Dropdown text
+                local dropdownText = CreateText(dropdownElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                dropdownText.Size = UDim2.new(1, -60, 1, 0)
+                dropdownText.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Selected value text
+                local selectedText = CreateText(dropdownElement, "Select...", 12, TERTIARY_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Right)
+                selectedText.Size = UDim2.new(1, -50, 1, 0)
+                selectedText.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Dropdown arrow icon
+                local arrowIcon = CreateInterfaceInstance("ImageLabel", "Arrow", dropdownElement)
+                arrowIcon.Size = UDim2.new(0, 20, 0, 20)
+                arrowIcon.Position = UDim2.new(1, -30, 0.5, -10)
+                arrowIcon.BackgroundTransparency = 1
+                arrowIcon.Image = "rbxassetid://7733658504" -- Arrow down icon
+                arrowIcon.ImageColor3 = TERTIARY_COLOR
+                
+                -- Dropdown button
+                local dropdownButton = CreateInterfaceInstance("TextButton", "Button", dropdownElement)
+                dropdownButton.Size = UDim2.new(1, 0, 1, 0)
+                dropdownButton.BackgroundTransparency = 1
+                dropdownButton.Text = ""
+                
+                -- Dropdown list container
+                local listContainer = CreateInterfaceInstance("Frame", "ListContainer", dropdownElement)
+                listContainer.Size = UDim2.new(1, 0, 0, 0) -- Initially closed
+                listContainer.Position = UDim2.new(0, 0, 1, 0)
+                listContainer.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+                listContainer.ZIndex = 5
+                listContainer.Visible = false
+                listContainer.ClipsDescendants = true
+                CreateUICorner(listContainer, 6)
+                
+                -- Add shadow to list
+                CreateShadow(listContainer, 10)
+                
+                -- List content
+                local listContent = CreateSmoothScrollingFrame(listContainer, UDim2.new(1, 0, 1, 0))
+                listContent.BackgroundTransparency = 1
+                listContent.ZIndex = 5
+                listContent.ScrollBarThickness = 3
+                
+                -- Dropdown variables
+                local isOpen = false
+                local selectedOption = nil
+                local optionButtons = {}
+                
+                -- Function to toggle dropdown
+                local function toggleDropdown()
+                    isOpen = not isOpen
+                    
+                    if isOpen then
+                        -- Calculate height based on options (max height of 200)
+                        local height = math.min(#options * 30, 200)
+                        
+                        -- Show list
+                        listContainer.Visible = true
+                        
+                        -- Animate list opening
+                        Tween(listContainer, {Size = UDim2.new(1, 0, 0, height)}, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                        Tween(arrowIcon, {Rotation = 180}, 0.2)
+                    else
+                        -- Animate list closing
+                        Tween(listContainer, {Size = UDim2.new(1, 0, 0, 0)}, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+                        Tween(arrowIcon, {Rotation = 0}, 0.2)
+                        
+                        -- Hide list after animation
+                        task.delay(0.2, function()
+                            if not isOpen then
+                                listContainer.Visible = false
+                            end
+                        end)
+                    end
+                end
+                
+                -- Function to select option
+                local function selectOption(option)
+                    selectedOption = option
+                    selectedText.Text = option
+                    toggleDropdown()
+                    callback(option)
+                end
+                
+                -- Create option buttons
+                for i, option in ipairs(options) do
+                    local optionButton = CreateInterfaceInstance("TextButton", "Option_"..option, listContent)
+                    optionButton.Size = UDim2.new(1, -10, 0, 30)
+                    optionButton.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+                    optionButton.BackgroundTransparency = 0.8
+                    optionButton.Text = ""
+                    optionButton.ZIndex = 6
+                    optionButton.LayoutOrder = i
+                    CreateUICorner(optionButton, 4)
+                    
+                    -- Option text
+                    local optionText = CreateText(optionButton, option, 12, TEXT_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Left)
+                    optionText.Size = UDim2.new(1, -20, 1, 0)
+                    optionText.Position = UDim2.new(0, 10, 0, 0)
+                    optionText.ZIndex = 6
+                    
+                    -- Hover effects
+                    optionButton.MouseEnter:Connect(function()
+                        Tween(optionButton, {BackgroundTransparency = 0.5}, 0.2)
+                    end)
+                    
+                    optionButton.MouseLeave:Connect(function()
+                        Tween(optionButton, {BackgroundTransparency = 0.8}, 0.2)
+                    end)
+                    
+                    -- Click functionality
+                    optionButton.MouseButton1Click:Connect(function()
+                        CreateRippleEffect(optionButton)
+                        selectOption(option)
+                    end)
+                    
+                    table.insert(optionButtons, optionButton)
+                end
+                
+                -- Hover effect for dropdown
+                dropdownButton.MouseEnter:Connect(function()
+                    Tween(dropdownElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                dropdownButton.MouseLeave:Connect(function()
+                    Tween(dropdownElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Toggle dropdown on click
+                dropdownButton.MouseButton1Click:Connect(function()
+                    CreateRippleEffect(dropdownElement)
+                    toggleDropdown()
+                end)
+                
+                -- Close dropdown when clicking elsewhere
+                UserInputService.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        local mousePosition = UserInputService:GetMouseLocation()
+                        
+                        -- Check if click is outside dropdown
+                        if isOpen and (not dropdownElement:IsDescendantOf(CoreGui) or 
+                                       not listContainer.Visible or
+                                       mousePosition.X < listContainer.AbsolutePosition.X or
+                                       mousePosition.X > listContainer.AbsolutePosition.X + listContainer.AbsoluteSize.X or
+                                       mousePosition.Y < listContainer.AbsolutePosition.Y or
+                                       mousePosition.Y > listContainer.AbsolutePosition.Y + listContainer.AbsoluteSize.Y) then
+                            
+                            -- Don't close if clicking the dropdown button
+                            if mousePosition.X >= dropdownElement.AbsolutePosition.X and
+                               mousePosition.X <= dropdownElement.AbsolutePosition.X + dropdownElement.AbsoluteSize.X and
+                               mousePosition.Y >= dropdownElement.AbsolutePosition.Y and
+                               mousePosition.Y <= dropdownElement.AbsolutePosition.Y + dropdownElement.AbsoluteSize.Y then
+                                return
+                            end
+                            
+                            toggleDropdown()
+                        end
+                    end
+                end)
+                
+                -- Add dropdown to elements
+                table.insert(section.Elements, dropdownElement)
+                updateSectionSize()
+                
+                -- Return dropdown element with methods
+                local dropdown = {
+                    Instance = dropdownElement,
+                    ListContainer = listContainer,
+                    SelectedText = selectedText,
+                    ArrowIcon = arrowIcon,
+                    Value = selectedOption,
+                    Options = options
+                }
+                
+                function dropdown:SetValue(option)
+                    if table.find(options, option) then
+                        selectOption(option)
+                    end
+                end
+                
+                function dropdown:GetValue()
+                    return selectedOption
+                end
+                
+                function dropdown:RefreshOptions(newOptions)
+                    options = newOptions
+                    
+                    -- Clear existing options
+                    for _, button in pairs(optionButtons) do
+                        button:Destroy()
+                    end
+                    optionButtons = {}
+                    
+                    -- Create new option buttons
+                    for i, option in ipairs(options) do
+                        local optionButton = CreateInterfaceInstance("TextButton", "Option_"..option, listContent)
+                        optionButton.Size = UDim2.new(1, -10, 0, 30)
+                        optionButton.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+                        optionButton.BackgroundTransparency = 0.8
+                        optionButton.Text = ""
+                        optionButton.ZIndex = 6
+                        optionButton.LayoutOrder = i
+                        CreateUICorner(optionButton, 4)
+                        
+                        -- Option text
+                        local optionText = CreateText(optionButton, option, 12, TEXT_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Left)
+                        optionText.Size = UDim2.new(1, -20, 1, 0)
+                        optionText.Position = UDim2.new(0, 10, 0, 0)
+                        optionText.ZIndex = 6
+                        
+                        -- Hover effects
+                        optionButton.MouseEnter:Connect(function()
+                            Tween(optionButton, {BackgroundTransparency = 0.5}, 0.2)
+                        end)
+                        
+                        optionButton.MouseLeave:Connect(function()
+                            Tween(optionButton, {BackgroundTransparency = 0.8}, 0.2)
+                        end)
+                        
+                        -- Click functionality
+                        optionButton.MouseButton1Click:Connect(function()
+                            CreateRippleEffect(optionButton)
+                            selectOption(option)
+                        end)
+                        
+                        table.insert(optionButtons, optionButton)
+                    end
+                    
+                    -- Reset selected option if it's not in new options
+                    if selectedOption and not table.find(options, selectedOption) then
+                        selectedOption = nil
+                        selectedText.Text = "Select..."
+                    end
+                    
+                    -- Update dropdown state
+                    dropdown.Options = options
+                    dropdown.Value = selectedOption
+                end
+                
+                return dropdown
+            end
+            
+            -- Color picker element
+            function section:ColorPicker(text, default, callback)
+                default = default or Color3.fromRGB(255, 255, 255)
+                callback = callback or function() end
+                
+                local colorPickerElement = CreateInterfaceInstance("Frame", text.."ColorPicker", sectionContent)
+                colorPickerElement.Size = UDim2.new(1, 0, 0, 40)
+                colorPickerElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                CreateUICorner(colorPickerElement, 6)
+                
+                -- Color picker text
+                local colorText = CreateText(colorPickerElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                colorText.Size = UDim2.new(1, -60, 1, 0)
+                colorText.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Color display
+                local colorDisplay = CreateInterfaceInstance("Frame", "ColorDisplay", colorPickerElement)
+                colorDisplay.Size = UDim2.new(0, 30, 0, 30)
+                colorDisplay.Position = UDim2.new(1, -40, 0.5, -15)
+                colorDisplay.BackgroundColor3 = default
+                CreateUICorner(colorDisplay, 6)
+                
+                -- Color picker button
+                local colorButton = CreateInterfaceInstance("TextButton", "Button", colorPickerElement)
+                colorButton.Size = UDim2.new(1, 0, 1, 0)
+                colorButton.BackgroundTransparency = 1
+                colorButton.Text = ""
+                
+                -- Color picker popup
+                local colorPickerPopup = CreateInterfaceInstance("Frame", "Popup", screenGui)
+                colorPickerPopup.Size = UDim2.new(0, 240, 0, 260)
+                colorPickerPopup.Position = UDim2.new(0.5, -120, 0.5, -130)
+                colorPickerPopup.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+                colorPickerPopup.Visible = false
+                colorPickerPopup.ZIndex = 10
+                CreateUICorner(colorPickerPopup, 8)
+                CreateShadow(colorPickerPopup, 20)
+                
+                -- Make popup draggable
+                local popupTopBar = CreateInterfaceInstance("Frame", "TopBar", colorPickerPopup)
+                popupTopBar.Size = UDim2.new(1, 0, 0, 30)
+                popupTopBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                popupTopBar.ZIndex = 10
+                CreateUICorner(popupTopBar, 8)
+                
+                -- Create clip effect for bottom corners of top bar
+                local popupTopClip = CreateInterfaceInstance("Frame", "TopClip", colorPickerPopup)
+                popupTopClip.Size = UDim2.new(1, 0, 0, 15)
+                popupTopClip.Position = UDim2.new(0, 0, 0, 15)
+                popupTopClip.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                popupTopClip.BorderSizePixel = 0
+                popupTopClip.ZIndex = 10
+                
+                -- Make popup draggable
+                CreateDraggableInstance(colorPickerPopup, popupTopBar)
+                
+                -- Popup title
+                local popupTitle = CreateText(popupTopBar, "Color Picker", 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+                popupTitle.Size = UDim2.new(1, 0, 1, 0)
+                popupTitle.ZIndex = 11
+                
+                -- Close button
+                local popupClose = CreateInterfaceInstance("TextButton", "Close", popupTopBar)
+                popupClose.Size = UDim2.new(0, 24, 0, 24)
+                popupClose.Position = UDim2.new(1, -27, 0, 3)
+                popupClose.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+                popupClose.Text = ""
+                popupClose.ZIndex = 11
+                CreateUICorner(popupClose, 12)
+                
+                -- X symbol
+                local xSymbol = CreateText(popupClose, "×", 20, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+                xSymbol.Size = UDim2.new(1, 0, 1, 0)
+                xSymbol.ZIndex = 12
+                
+                -- Color picker saturation/value panel
+                local svPanel = CreateInterfaceInstance("ImageLabel", "SVPanel", colorPickerPopup)
+                svPanel.Size = UDim2.new(0, 200, 0, 150)
+                svPanel.Position = UDim2.new(0.5, -100, 0, 40)
+                svPanel.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Base hue color
+                svPanel.Image = "rbxassetid://4155801252" -- Saturation/value overlay
+                svPanel.ZIndex = 11
+                CreateUICorner(svPanel, 6)
+                
+                -- Saturation/value cursor
+                local svCursor = CreateInterfaceInstance("Frame", "Cursor", svPanel)
+                svCursor.Size = UDim2.new(0, 10, 0, 10)
+                svCursor.AnchorPoint = Vector2.new(0.5, 0.5)
+                svCursor.Position = UDim2.new(1, 0, 0, 0) -- Default to top right (max saturation, max value)
+                svCursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                svCursor.ZIndex = 12
+                CreateUICorner(svCursor, 5)
+                CreateStroke(svCursor, Color3.fromRGB(0, 0, 0), 1)
+                
+                -- Hue slider
+                local hueSlider = CreateInterfaceInstance("ImageLabel", "HueSlider", colorPickerPopup)
+                hueSlider.Size = UDim2.new(0, 200, 0, 20)
+                hueSlider.Position = UDim2.new(0.5, -100, 0, 200)
+                hueSlider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                hueSlider.Image = "rbxassetid://6523286724" -- Hue spectrum
+                hueSlider.ZIndex = 11
+                CreateUICorner(hueSlider, 6)
+                
+                -- Hue cursor
+                local hueCursor = CreateInterfaceInstance("Frame", "Cursor", hueSlider)
+                hueCursor.Size = UDim2.new(0, 5, 1, 0)
+                hueCursor.Position = UDim2.new(0, 0, 0, 0)
+                hueCursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                hueCursor.ZIndex = 12
+                CreateUICorner(hueCursor, 2)
+                CreateStroke(hueCursor, Color3.fromRGB(0, 0, 0), 1)
+                
+                -- Color picker variables
+                local hue, sat, val = 0, 1, 1
+                local draggingSV = false
+                local draggingHue = false
+                
+                -- Convert HSV to RGB
+                local function hsvToRgb(h, s, v)
+                    local r, g, b
+                    
+                    local i = math.floor(h * 6)
+                    local f = h * 6 - i
+                    local p = v * (1 - s)
+                    local q = v * (1 - f * s)
+                    local t = v * (1 - (1 - f) * s)
+                    
+                    i = i % 6
+                    
+                    if i == 0 then r, g, b = v, t, p
+                    elseif i == 1 then r, g, b = q, v, p
+                    elseif i == 2 then r, g, b = p, v, t
+                    elseif i == 3 then r, g, b = p, q, v
+                    elseif i == 4 then r, g, b = t, p, v
+                    elseif i == 5 then r, g, b = v, p, q
+                    end
+                    
+                    return Color3.fromRGB(r * 255, g * 255, b * 255)
+                end
+                
+                -- Convert RGB to HSV
+                local function rgbToHsv(color)
+                    local r, g, b = color.R, color.G, color.B
+                    local max, min = math.max(r, g, b), math.min(r, g, b)
+                    local h, s, v
+                    
+                    v = max
+                    
+                    local d = max - min
+                    if max == 0 then
+                        s = 0
+                    else
+                        s = d / max
+                    end
+                    
+                    if max == min then
+                        h = 0
+                    else
+                        if max == r then
+                            h = (g - b) / d
+                            if g < b then h = h + 6 end
+                        elseif max == g then
+                            h = (b - r) / d + 2
+                        elseif max == b then
+                            h = (r - g) / d + 4
+                        end
+                        h = h / 6
+                    end
+                    
+                    return h, s, v
+                end
+                
+                -- Update color based on HSV values
+                local function updateColor()
+                    local color = hsvToRgb(hue, sat, val)
+                    colorDisplay.BackgroundColor3 = color
+                    svPanel.BackgroundColor3 = hsvToRgb(hue, 1, 1)
+                    return color
+                end
+                
+                -- Set initial color
+                hue, sat, val = rgbToHsv(default)
+                updateColor()
+                hueCursor.Position = UDim2.new(hue, 0, 0, 0)
+                svCursor.Position = UDim2.new(sat, 0, 1 - val, 0)
+                
+                -- SV panel input
+                svPanel.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        draggingSV = true
+                        
+                        -- Calculate saturation and value from position
+                        local relativeX = math.clamp((input.Position.X - svPanel.AbsolutePosition.X) / svPanel.AbsoluteSize.X, 0, 1)
+                        local relativeY = math.clamp((input.Position.Y - svPanel.AbsolutePosition.Y) / svPanel.AbsoluteSize.Y, 0, 1)
+                        
+                        sat = relativeX
+                        val = 1 - relativeY
+                        
+                        -- Update cursor position
+                        svCursor.Position = UDim2.new(sat, 0, relativeY, 0)
+                        
+                        -- Update color and callback
+                        local color = updateColor()
+                        callback(color)
+                    end
+                end)
+                
+                svPanel.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        draggingSV = false
+                    end
+                end)
+                
+                -- Hue slider input
+                hueSlider.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        draggingHue = true
+                        
+                        -- Calculate hue from position
+                        local relativeX = math.clamp((input.Position.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
+                        
+                        hue = relativeX
+                        
+                        -- Update cursor position
+                        hueCursor.Position = UDim2.new(hue, 0, 0, 0)
+                        
+                        -- Update color and callback
+                        local color = updateColor()
+                        callback(color)
+                    end
+                end)
+                
+                hueSlider.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        draggingHue = false
+                    end
+                end)
+                
+                -- Mouse movement
+                UserInputService.InputChanged:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                        if draggingSV then
+                            -- Calculate saturation and value from position
+                            local relativeX = math.clamp((input.Position.X - svPanel.AbsolutePosition.X) / svPanel.AbsoluteSize.X, 0, 1)
+                            local relativeY = math.clamp((input.Position.Y - svPanel.AbsolutePosition.Y) / svPanel.AbsoluteSize.Y, 0, 1)
+                            
+                            sat = relativeX
+                            val = 1 - relativeY
+                            
+                            -- Update cursor position
+                            svCursor.Position = UDim2.new(sat, 0, relativeY, 0)
+                            
+                            -- Update color and callback
+                            local color = updateColor()
+                            callback(color)
+                        elseif draggingHue then
+                            -- Calculate hue from position
+                            local relativeX = math.clamp((input.Position.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
+                            
+                            hue = relativeX
+                            
+                            -- Update cursor position
+                            hueCursor.Position = UDim2.new(hue, 0, 0, 0)
+                            
+                            -- Update color and callback
+                            local color = updateColor()
+                            callback(color)
+                        end
+                    end
+                end)
+                
+                -- Apply button
+                local applyButton = CreateInterfaceInstance("TextButton", "Apply", colorPickerPopup)
+                applyButton.Size = UDim2.new(0, 200, 0, 30)
+                applyButton.Position = UDim2.new(0.5, -100, 0, 225)
+                applyButton.BackgroundColor3 = ACCENT_COLOR
+                applyButton.Text = ""
+                applyButton.ZIndex = 11
+                CreateUICorner(applyButton, 6)
+                CreateNeonGradient(applyButton, ACCENT_COLOR, MAGENTA_COLOR, 90)
+                
+                local applyText = CreateText(applyButton, "Apply", 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+                applyText.Size = UDim2.new(1, 0, 1, 0)
+                applyText.ZIndex = 12
+                
+                -- Close popup function
+                local function closePopup()
+                    colorPickerPopup.Visible = false
+                end
+                
+                -- Apply button click
+                applyButton.MouseButton1Click:Connect(function()
+                    CreateRippleEffect(applyButton)
+                    closePopup()
+                end)
+                
+                -- Close button click
+                popupClose.MouseButton1Click:Connect(function()
+                    CreateRippleEffect(popupClose)
+                    closePopup()
+                end)
+                
+                -- Toggle popup on click
+                colorButton.MouseButton1Click:Connect(function()
+                    CreateRippleEffect(colorPickerElement)
+                    colorPickerPopup.Visible = true
+                end)
+                
+                -- Hover effect
+                colorButton.MouseEnter:Connect(function()
+                    Tween(colorPickerElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                colorButton.MouseLeave:Connect(function()
+                    Tween(colorPickerElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Add to elements
+                table.insert(section.Elements, colorPickerElement)
+                updateSectionSize()
+                
+                -- Return color picker element with methods
+                local colorPicker = {
+                    Instance = colorPickerElement,
+                    Display = colorDisplay,
+                    Popup = colorPickerPopup,
+                    Value = default
+                }
+                
+                function colorPicker:SetValue(color)
+                    hue, sat, val = rgbToHsv(color)
+                    hueCursor.Position = UDim2.new(hue, 0, 0, 0)
+                    svCursor.Position = UDim2.new(sat, 0, 1 - val, 0)
+                    colorPicker.Value = updateColor()
+                    callback(colorPicker.Value)
+                end
+                
+                function colorPicker:GetValue()
+                    return colorDisplay.BackgroundColor3
+                end
+                
+                return colorPicker
+            end
+            
+            -- Textbox element
+            function section:Textbox(text, placeholder, default, callback)
+                placeholder = placeholder or "Enter text..."
+                default = default or ""
+                callback = callback or function() end
+                
+                local textboxElement = CreateInterfaceInstance("Frame", text.."Textbox", sectionContent)
+                textboxElement.Size = UDim2.new(1, 0, 0, 40)
+                textboxElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                CreateUICorner(textboxElement, 6)
+                
+                -- Textbox label
+                local textboxLabel = CreateText(textboxElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                textboxLabel.Size = UDim2.new(1, 0, 0, 20)
+                textboxLabel.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Textbox input background
+                local inputBackground = CreateInterfaceInstance("Frame", "Background", textboxElement)
+                inputBackground.Size = UDim2.new(1, -20, 0, 20)
+                inputBackground.Position = UDim2.new(0, 10, 0, 20)
+                inputBackground.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+                CreateUICorner(inputBackground, 4)
+                
+                -- Textbox input
+                local inputBox = CreateInterfaceInstance("TextBox", "Input", inputBackground)
+                inputBox.Size = UDim2.new(1, -10, 1, 0)
+                inputBox.Position = UDim2.new(0, 5, 0, 0)
+                inputBox.BackgroundTransparency = 1
+                inputBox.Text = default
+                inputBox.PlaceholderText = placeholder
+                inputBox.TextColor3 = TEXT_COLOR
+                inputBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+                inputBox.Font = Enum.Font.Gotham
+                inputBox.TextSize = 12
+                inputBox.TextXAlignment = Enum.TextXAlignment.Left
+                inputBox.ClearTextOnFocus = false
+                
+                -- Hover effects
+                textboxElement.MouseEnter:Connect(function()
+                    Tween(textboxElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                textboxElement.MouseLeave:Connect(function()
+                    Tween(textboxElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Focus effects
+                inputBox.Focused:Connect(function()
+                    Tween(inputBackground, {BackgroundColor3 = Color3.fromRGB(35, 35, 45)}, 0.2)
+                end)
+                
+                inputBox.FocusLost:Connect(function(enterPressed)
+                    Tween(inputBackground, {BackgroundColor3 = Color3.fromRGB(25, 25, 35)}, 0.2)
+                    callback(inputBox.Text, enterPressed)
+                end)
+                
+                -- Add to elements
+                table.insert(section.Elements, textboxElement)
+                updateSectionSize()
+                
+                -- Return textbox element with methods
+                local textbox = {
+                    Instance = textboxElement,
+                    Input = inputBox,
+                    Value = default
+                }
+                
+                function textbox:SetValue(value)
+                    inputBox.Text = value
+                    textbox.Value = value
+                    callback(value, false)
+                end
+                
+                function textbox:GetValue()
+                    return inputBox.Text
+                end
+                
+                return textbox
+            end
+            
+            -- Label element
+            function section:Label(text, color)
+                local labelElement = CreateInterfaceInstance("Frame", "Label_"..text, sectionContent)
+                labelElement.Size = UDim2.new(1, 0, 0, 30)
+                labelElement.BackgroundTransparency = 1
+                
+                -- Label text
+                local labelText = CreateText(labelElement, text, 14, color or TEXT_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Left)
+                labelText.Size = UDim2.new(1, 0, 1, 0)
+                labelText.Position = UDim2.new(0, 5, 0, 0)
+                
+                -- Add to elements
+                table.insert(section.Elements, labelElement)
+                updateSectionSize()
+                
+                -- Return label element with methods
+                local label = {
+                    Instance = labelElement,
+                    Text = labelText
+                }
+                
+                function label:SetText(newText)
+                    labelText.Text = newText
+                end
+                
+                function label:SetColor(newColor)
+                    labelText.TextColor3 = newColor
+                end
+                
+                return label
+            end
+            
+            -- Keybind element
+            function section:Keybind(text, default, callback)
+                default = default or Enum.KeyCode.Unknown
+                callback = callback or function() end
+                
+                local keybindElement = CreateInterfaceInstance("Frame", text.."Keybind", sectionContent)
+                keybindElement.Size = UDim2.new(1, 0, 0, 40)
+                keybindElement.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                CreateUICorner(keybindElement, 6)
+                
+                -- Keybind text
+                local keybindText = CreateText(keybindElement, text, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                keybindText.Size = UDim2.new(1, -110, 1, 0)
+                keybindText.Position = UDim2.new(0, 10, 0, 0)
+                
+                -- Keybind display
+                local keybindDisplay = CreateInterfaceInstance("TextButton", "Display", keybindElement)
+                keybindDisplay.Size = UDim2.new(0, 100, 0, 30)
+                keybindDisplay.Position = UDim2.new(1, -110, 0.5, -15)
+                keybindDisplay.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+                keybindDisplay.Text = ""
+                CreateUICorner(keybindDisplay, 4)
+                
+                -- Keybind value text
+                local valueText = CreateText(keybindDisplay, GetKeyCodeString(default), 12, TEXT_COLOR, Enum.Font.Gotham, Enum.TextXAlignment.Center)
+                valueText.Size = UDim2.new(1, 0, 1, 0)
+                
+                -- Keybind variables
+                local selectedKey = default
+                local listening = false
+                
+                -- Listen for key function
+                local function listenForKey()
+                    listening = true
+                    valueText.Text = "..."
+                    
+                    local connection
+                    connection = UserInputService.InputBegan:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.Keyboard then
+                            selectedKey = input.KeyCode
+                            listening = false
+                            valueText.Text = GetKeyCodeString(selectedKey)
+                            callback(selectedKey)
+                            connection:Disconnect()
+                        end
+                    end)
+                end
+                
+                -- Start listening on click
+                keybindDisplay.MouseButton1Click:Connect(function()
+                    if not listening then
+                        CreateRippleEffect(keybindDisplay)
+                        listenForKey()
+                    end
+                end)
+                
+                -- Hover effects
+                keybindElement.MouseEnter:Connect(function()
+                    Tween(keybindElement, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}, 0.2)
+                end)
+                
+                keybindElement.MouseLeave:Connect(function()
+                    Tween(keybindElement, {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}, 0.2)
+                end)
+                
+                -- Add to elements
+                table.insert(section.Elements, keybindElement)
+                updateSectionSize()
+                
+                -- Return keybind element with methods
+                local keybind = {
+                    Instance = keybindElement,
+                    Display = keybindDisplay,
+                    Value = selectedKey
+                }
+                
+                function keybind:SetKey(keyCode)
+                    selectedKey = keyCode
+                    keybind.Value = keyCode
+                    valueText.Text = GetKeyCodeString(keyCode)
+                    callback(keyCode)
+                end
+                
+                function keybind:GetKey()
+                    return selectedKey
+                end
+                
+                return keybind
+            end
+            
+            -- Paragraph element (multi-line text)
+            function section:Paragraph(title, content, color)
+                local paragraphElement = CreateInterfaceInstance("Frame", "Paragraph_"..title, sectionContent)
+                paragraphElement.Size = UDim2.new(1, 0, 0, 60) -- Initial size, will be updated
+                paragraphElement.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+                CreateUICorner(paragraphElement, 6)
+                
+                -- Title text
+                local titleText = CreateText(paragraphElement, title, 14, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+                titleText.Size = UDim2.new(1, -20, 0, 20)
+                titleText.Position = UDim2.new(0, 10, 0, 5)
+                
+                -- Content text
+                local contentText = CreateInterfaceInstance("TextLabel", "Content", paragraphElement)
+                contentText.Size = UDim2.new(1, -20, 0, 0) -- Will be updated
+                contentText.Position = UDim2.new(0, 10, 0, 25)
+                contentText.BackgroundTransparency = 1
+                contentText.Text = content
+                contentText.TextColor3 = color or TERTIARY_COLOR
+                contentText.Font = Enum.Font.Gotham
+                contentText.TextSize = 12
+                contentText.TextXAlignment = Enum.TextXAlignment.Left
+                contentText.TextYAlignment = Enum.TextYAlignment.Top
+                contentText.TextWrapped = true
+                contentText.AutomaticSize = Enum.AutomaticSize.Y
+                
+                -- Update size based on content
+                local function updateSize()
+                    paragraphElement.Size = UDim2.new(1, 0, 0, contentText.TextBounds.Y + 35)
+                end
+                
+                -- Initial size update
+                task.defer(updateSize)
+                
+                -- Add to elements
+                table.insert(section.Elements, paragraphElement)
+                updateSectionSize()
+                
+                -- Return paragraph element with methods
+                local paragraph = {
+                    Instance = paragraphElement,
+                    Title = titleText,
+                    Content = contentText
+                }
+                
+                function paragraph:SetTitle(newTitle)
+                    titleText.Text = newTitle
+                end
+                
+                function paragraph:SetContent(newContent)
+                    contentText.Text = newContent
+                    updateSize()
+                    updateSectionSize()
+                end
+                
+                return paragraph
+            end
+            
+            return section
+        end
+        
+        return tab
+    end
+    
+    -- Select tab function
+    function interface:SelectTab(tab)
+        -- Deselect current tab
+        if interface.ActiveTab then
+            Tween(interface.ActiveTab.Button, {BackgroundColor3 = Color3.fromRGB(30, 30, 40)}, 0.2)
+            Tween(interface.ActiveTab.Button.Indicator, {BackgroundTransparency = 1}, 0.2)
+            interface.ActiveTab.Content.Visible = false
+        end
+        
+        -- Select new tab
+        Tween(tab.Button, {BackgroundColor3 = Color3.fromRGB(40, 40, 60)}, 0.2)
+        tab.Button.Indicator.Visible = true
+        Tween(tab.Button.Indicator, {BackgroundTransparency = 0}, 0.2)
+        tab.Content.Visible = true
+        
+        interface.ActiveTab = tab
+    end
+    
+    -- Notification system
+    function interface:Notify(title, content, duration)
+        title = title or "Notification"
+        content = content or ""
+        duration = duration or 5
+        
+        -- Create notification container if it doesn't exist
+        if not screenGui:FindFirstChild("NotificationContainer") then
+            local notifContainer = CreateInterfaceInstance("Frame", "NotificationContainer", screenGui)
+            notifContainer.Size = UDim2.new(0, 300, 1, 0)
+            notifContainer.Position = UDim2.new(1, -310, 0, 10)
+            notifContainer.BackgroundTransparency = 1
+            
+            -- Add layout for notifications
+            local notifLayout = Instance.new("UIListLayout")
+            notifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            notifLayout.Padding = UDim.new(0, 10)
+            notifLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+            notifLayout.Parent = notifContainer
+        end
+        
+        local notifContainer = screenGui.NotificationContainer
+        
+        -- Create notification
+        local notification = CreateInterfaceInstance("Frame", "Notification_"..title, notifContainer)
+        notification.Size = UDim2.new(1, 0, 0, 80)
+        notification.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        notification.BackgroundTransparency = 0.1
+        notification.ClipsDescendants = true
+        CreateUICorner(notification, 8)
+        CreateShadow(notification, 15)
+        
+        -- Add animated accent bar on the left
+        local accentBar = CreateInterfaceInstance("Frame", "AccentBar", notification)
+        accentBar.Size = UDim2.new(0, 4, 1, 0)
+        accentBar.BackgroundColor3 = ACCENT_COLOR
+        CreateNeonGradient(accentBar, ACCENT_COLOR, MAGENTA_COLOR, 90)
+        
+        -- Add notification title
+        local notifTitle = CreateText(notification, title, 16, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Left)
+        notifTitle.Size = UDim2.new(1, -50, 0, 30)
+        notifTitle.Position = UDim2.new(0, 15, 0, 5)
+        
+        -- Add notification content
+        local notifContent = CreateInterfaceInstance("TextLabel", "Content", notification)
+        notifContent.Size = UDim2.new(1, -30, 0, 40)
+        notifContent.Position = UDim2.new(0, 15, 0, 35)
+        notifContent.BackgroundTransparency = 1
+        notifContent.Text = content
+        notifContent.TextColor3 = TERTIARY_COLOR
+        notifContent.Font = Enum.Font.Gotham
+        notifContent.TextSize = 14
+        notifContent.TextWrapped = true
+        notifContent.TextXAlignment = Enum.TextXAlignment.Left
+        notifContent.TextYAlignment = Enum.TextYAlignment.Top
+        
+        -- Add close button
+        local closeButton = CreateInterfaceInstance("TextButton", "Close", notification)
+        closeButton.Size = UDim2.new(0, 20, 0, 20)
+        closeButton.Position = UDim2.new(1, -25, 0, 10)
+        closeButton.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+        closeButton.Text = ""
+        CreateUICorner(closeButton, 10)
+        
+        -- X symbol for close button
+        local xSymbol = CreateText(closeButton, "×", 18, TEXT_COLOR, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+        xSymbol.Size = UDim2.new(1, 0, 1, 0)
+        
+        -- Progress bar for auto-close
+        local progressBar = CreateInterfaceInstance("Frame", "ProgressBar", notification)
+        progressBar.Size = UDim2.new(1, 0, 0, 3)
+        progressBar.Position = UDim2.new(0, 0, 1, -3)
+        progressBar.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+        
+        local progressFill = CreateInterfaceInstance("Frame", "Fill", progressBar)
+        progressFill.Size = UDim2.new(1, 0, 1, 0)
+        progressFill.BackgroundColor3 = ACCENT_COLOR
+        CreateNeonGradient(progressFill, ACCENT_COLOR, MAGENTA_COLOR, 90)
+        
+        -- Animation for entry
+        notification.Position = UDim2.new(1, 0, 0, 0)
+        Tween(notification, {Position = UDim2.new(0, 0, 0, 0)}, 0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        
+        -- Progress bar animation
+        Tween(progressFill, {Size = UDim2.new(0, 0, 1, 0)}, duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
+        
+        -- Close notification function
+        local function closeNotification()
+            -- Animation for exit
+            Tween(notification, {Position = UDim2.new(1, 0, 0, 0)}, 0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+            
+            -- Destroy after animation
+            task.delay(0.5, function()
+                notification:Destroy()
+            end)
+        end
+        
+        -- Auto-close after duration
+        task.delay(duration, closeNotification)
+        
+        -- Close button functionality
+        closeButton.MouseButton1Click:Connect(function()
+            CreateRippleEffect(closeButton)
+            closeNotification()
+        end)
+        
+        -- Return notification object with methods
+        local notif = {
+            Instance = notification,
+            Title = notifTitle,
+            Content = notifContent
+        }
+        
+        function notif:Close()
+            closeNotification()
+        end
+        
+        function notif:Update(newTitle, newContent)
+            notifTitle.Text = newTitle or notifTitle.Text
+            notifContent.Text = newContent or notifContent.Text
+        end
+        
+        return notif
+    end
+    
+    -- Set toggle key (to show/hide the entire UI)
+    function interface:SetToggleKey(keyCode)
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if not gameProcessed and input.KeyCode == keyCode then
+                ToggledUI = not ToggledUI
+                
+                if ToggledUI then
+                    mainContainer.Visible = true
+                    Tween(mainContainer, {Position = UDim2.new(0.5, -400, 0.5, -250)}, 0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+                    Tween(mainContainer, {BackgroundTransparency = 0}, 0.5)
+                else
+                    Tween(mainContainer, {Position = UDim2.new(0.5, -400, 1.5, 0)}, 0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+                    Tween(mainContainer, {BackgroundTransparency = 1}, 0.5)
+                    
+                    task.delay(0.5, function()
+                        if not ToggledUI then
+                            mainContainer.Visible = false
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+    
+    -- Mobile-specific adjustments
+    if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+        -- Adjust UI for mobile
+        mainContainer.Size = UDim2.new(0.9, 0, 0.7, 0)
+        mainContainer.Position = UDim2.new(0.5, -mainContainer.Size.X.Offset / 2, 0.5, -mainContainer.Size.Y.Offset / 2)
+        
+        -- Increase button sizes and padding for touch
+        for _, element in pairs(mainContainer:GetDescendants()) do
+            if element:IsA("TextButton") or element:IsA("TextLabel") then
+                element.TextSize = element.TextSize + 2
+            end
+        end
+    end
+    
+    UILoaded = true
+    return interface
+end
+
+-- Main library object
+local SynthwaveHorizon = {}
+
+-- Create function to start the UI
+function SynthwaveHorizon.Create(name)
+    -- Create and return the main interface
+    return CreateInterface(name)
+end
+
+-- Return the library
+return SynthwaveHorizon

@@ -467,8 +467,34 @@ function SynthwaveUI:Create(title, accentColor)
         minimized = not minimized
         
         if minimized then
+            -- Hide content and only show top bar
             Tween(mainFrame, {Size = UDim2.new(0, 800, 0, 35)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            
+            -- Hide elements that shouldn't be visible when minimized
+            Tween(sidebar, {Transparency = 1}, 0.3)
+            Tween(contentContainer, {Transparency = 1}, 0.3)
+            Tween(bottomBar, {Transparency = 1}, 0.3)
+            
+            -- Make elements non-interactive when minimized
+            task.delay(0.3, function()
+                if minimized then
+                    sidebar.Visible = false
+                    contentContainer.Visible = false
+                    bottomBar.Visible = false
+                end
+            end)
         else
+            -- Make elements visible again
+            sidebar.Visible = true
+            contentContainer.Visible = true
+            bottomBar.Visible = true
+            
+            -- Restore transparency
+            Tween(sidebar, {Transparency = 0}, 0.3)
+            Tween(contentContainer, {Transparency = 0}, 0.3)
+            Tween(bottomBar, {Transparency = 0}, 0.3)
+            
+            -- Restore full size
             Tween(mainFrame, {Size = UDim2.new(0, 800, 0, 500)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         end
     end)
@@ -1177,6 +1203,11 @@ function SynthwaveUI:Create(title, accentColor)
                     end
                 end
                 
+                -- Add Select method (alias for Set) to fix compatibility with example code
+                function dropdownFunctions:Select(option)
+                    self:Set(option)
+                end
+                
                 function dropdownFunctions:Get()
                     return selectedOption
                 end
@@ -1330,7 +1361,148 @@ function SynthwaveUI:Create(title, accentColor)
         return sectionFunctions
     end
     
-    -- Toast notification system
+    -- Notification system (larger, more prominent notifications)
+    function library:Notify(title, message, notifyType, duration)
+        local notifyType = notifyType or "info" -- "info", "success", "error", "warning"
+        local duration = duration or 5
+        
+        -- Determine color based on type
+        local notifyColor
+        if notifyType == "success" then
+            notifyColor = ColorScheme.Success or Color3.fromRGB(0, 170, 126)
+        elseif notifyType == "error" then
+            notifyColor = ColorScheme.Error or Color3.fromRGB(255, 61, 61)
+        elseif notifyType == "warning" then
+            notifyColor = ColorScheme.Warning or Color3.fromRGB(255, 170, 0)
+        else
+            notifyColor = ColorScheme.Accent1
+        end
+        
+        -- Create notification UI
+        local notifyUI = Create("Frame")({
+            Name = "Notification",
+            Parent = UI,
+            BackgroundColor3 = ColorScheme.Secondary,
+            Position = UDim2.new(0.5, 0, 0, -100), -- Start off-screen
+            Size = UDim2.new(0, 300, 0, 100),
+            AnchorPoint = Vector2.new(0.5, 0),
+            ZIndex = 100
+        })
+        
+        local notifyCorner = Create("UICorner")({
+            CornerRadius = CORNER_RADIUS,
+            Parent = notifyUI
+        })
+        
+        local notifyStroke = Create("UIStroke")({
+            Parent = notifyUI,
+            Color = notifyColor,
+            Thickness = 2,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        })
+        
+        local notifyIcon = Create("TextLabel")({
+            Name = "Icon",
+            Parent = notifyUI,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 15, 0, 0),
+            Size = UDim2.new(0, 30, 0, 30),
+            Font = FONT,
+            TextSize = 20,
+            TextColor3 = notifyColor
+        })
+        
+        -- Set icon based on type
+        if notifyType == "success" then
+            notifyIcon.Text = "✓"
+        elseif notifyType == "error" then
+            notifyIcon.Text = "✗"
+        elseif notifyType == "warning" then
+            notifyIcon.Text = "⚠"
+        else
+            notifyIcon.Text = "ℹ"
+        end
+        
+        local notifyTitle = Create("TextLabel")({
+            Name = "Title",
+            Parent = notifyUI,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 50, 0, 10),
+            Size = UDim2.new(1, -65, 0, 20),
+            Font = FONT,
+            Text = title,
+            TextColor3 = ColorScheme.Text,
+            TextSize = 18,
+            TextXAlignment = Enum.TextXAlignment.Left
+        })
+        
+        local notifyMessage = Create("TextLabel")({
+            Name = "Message",
+            Parent = notifyUI,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 50, 0, 35),
+            Size = UDim2.new(1, -65, 0, 55),
+            Font = REGULAR_FONT,
+            Text = message,
+            TextColor3 = ColorScheme.Text,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top,
+            TextWrapped = true
+        })
+        
+        -- Close button
+        local closeButton = Create("TextButton")({
+            Name = "CloseButton",
+            Parent = notifyUI,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(1, -25, 0, 5),
+            Size = UDim2.new(0, 20, 0, 20),
+            Text = "×",
+            TextColor3 = ColorScheme.Text,
+            TextSize = 20,
+            Font = FONT
+        })
+        
+        closeButton.MouseButton1Click:Connect(function()
+            -- Animate out
+            Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, -100)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            task.delay(0.5, function()
+                notifyUI:Destroy()
+            end)
+        end)
+        
+        -- Progress bar
+        local progressBar = Create("Frame")({
+            Name = "ProgressBar",
+            Parent = notifyUI,
+            BackgroundColor3 = notifyColor,
+            Position = UDim2.new(0, 0, 1, -2),
+            Size = UDim2.new(1, 0, 0, 2),
+            BorderSizePixel = 0
+        })
+        
+        -- Animate in
+        Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, 20)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        
+        -- Progress bar animation
+        Tween(progressBar, {Size = UDim2.new(0, 0, 0, 2)}, duration)
+        
+        -- Auto close after duration
+        task.delay(duration, function()
+            -- Only animate out if not already closed
+            if notifyUI and notifyUI.Parent then
+                Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, -100)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                task.delay(0.5, function()
+                    if notifyUI and notifyUI.Parent then
+                        notifyUI:Destroy()
+                    end
+                end)
+            end
+        end)
+    end
+    
+    -- Toast notification system (smaller, less intrusive notifications)
     function library:Toast(message, toastType, duration)
         -- Create toast
         local toastType = toastType or "Info" -- "Info", "Success", "Error", "Warning"

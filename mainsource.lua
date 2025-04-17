@@ -1,3 +1,54 @@
+-- SynthwaveUI Library - Fixed Version
+-- Original by whohurtyoudear, fixed and improved version
+
+-- Initialize library and services
+local SynthwaveUI = {}
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local TextService = game:GetService("TextService")
+local Players = game:GetService("Players") or {LocalPlayer = {Name = "Player"}}
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer or {Name = "Player"}
+local Mouse = LocalPlayer:GetMouse and LocalPlayer:GetMouse() or {X = 0, Y = 0}
+
+-- Error handling and utility functions
+local function SafeCallback(callback, ...)
+    if typeof(callback) == "function" then
+        local success, result = pcall(callback, ...)
+        if not success then
+            warn("SynthwaveUI: Callback error: " .. tostring(result))
+        end
+        return success, result
+    end
+    return false
+end
+
+local function SafeHttpGet(url)
+    local success, result = pcall(function()
+        return SafeHttpGet(url)
+    end)
+    if not success then
+        warn("SynthwaveUI: HTTP Get error: " .. tostring(result))
+        return ""
+    end
+    return result
+end
+
+local function SafeGetUserId(playerName)
+    local success, userId = pcall(function()
+        local PlayerImage = Players
+        return PlayerImage:GetUserIdFromNameAsync(playerName)
+    end)
+    if not success or not userId then
+        warn("SynthwaveUI: Failed to get user ID for " .. tostring(playerName))
+        return 0
+    end
+    return userId
+end
+
+-- Create a safe environment for the library
 -- SynthwaveUI Library Initialization
 local SynthwaveUI = {
     Folder = "SynthwaveUI",
@@ -1200,3 +1251,74 @@ local SynthwaveUI = {
 }
 
 return SynthwaveUI
+
+-- Add notification system
+function SynthwaveUI:Notify(title, message, duration)
+    duration = duration or 5
+    
+    local NotificationHolder = Instance.new("ScreenGui")
+    NotificationHolder.Name = "SynthwaveNotification"
+    NotificationHolder.Parent = CoreGui
+    
+    local Notification = Instance.new("Frame")
+    Notification.Name = "Notification"
+    Notification.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    Notification.BorderSizePixel = 0
+    Notification.Position = UDim2.new(1, -320, 1, -100)
+    Notification.Size = UDim2.new(0, 300, 0, 80)
+    Notification.Parent = NotificationHolder
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 6)
+    UICorner.Parent = Notification
+    
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.BackgroundTransparency = 1
+    Title.Position = UDim2.new(0, 15, 0, 10)
+    Title.Size = UDim2.new(1, -30, 0, 20)
+    Title.Font = Enum.Font.GothamBold
+    Title.Text = title
+    Title.TextColor3 = Color3.fromRGB(255, 0, 128)
+    Title.TextSize = 16
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = Notification
+    
+    local Message = Instance.new("TextLabel")
+    Message.Name = "Message"
+    Message.BackgroundTransparency = 1
+    Message.Position = UDim2.new(0, 15, 0, 35)
+    Message.Size = UDim2.new(1, -30, 0, 35)
+    Message.Font = Enum.Font.Gotham
+    Message.Text = message
+    Message.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Message.TextSize = 14
+    Message.TextWrapped = true
+    Message.TextXAlignment = Enum.TextXAlignment.Left
+    Message.TextYAlignment = Enum.TextYAlignment.Top
+    Message.Parent = Notification
+    
+    -- Animate in
+    Notification.Position = UDim2.new(1, 20, 1, -100)
+    local Tween = TweenService:Create(Notification, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {Position = UDim2.new(1, -320, 1, -100)})
+    Tween:Play()
+    
+    -- Animate out after duration
+    task.delay(duration, function()
+        local Tween = TweenService:Create(Notification, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {Position = UDim2.new(1, 20, 1, -100)})
+        Tween:Play()
+        Tween.Completed:Connect(function()
+            NotificationHolder:Destroy()
+        end)
+    end)
+end
+
+-- Error handling wrapper
+function SynthwaveUI:SafeExecute(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        self:Notify("Error", "An error occurred: " .. tostring(result), 5)
+        warn("SynthwaveUI Error: " .. tostring(result))
+    end
+    return success, result
+end

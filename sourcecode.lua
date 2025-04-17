@@ -98,11 +98,12 @@ function NebulaUI:CreateWindow(title, options)
     }
     
     -- ScreenGui container
-    local ScreenGui = Create("ScreenGui", {
-        Name = "NebulaUI_" .. HttpService:GenerateGUID(false),
-        ResetOnSpawn = false,
-        DisplayOrder = 999
-    })
+   local ScreenGui = Create("ScreenGui", {
+    Name = "NebulaUI_" .. HttpService:GenerateGUID(false),
+    ResetOnSpawn = false,
+    DisplayOrder = 999,
+    Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") -- 🔥 CRITICAL FIX
+})
     
     -- Main frame
     local MainFrame = Create("Frame", {

@@ -63,6 +63,11 @@ local function Create(instanceType)
 end
 
 local function Tween(instance, properties, duration, style, direction)
+    -- Ensure duration is a valid number to prevent TweenInfo errors
+    if duration ~= nil and type(duration) ~= "number" then
+        duration = TWEEN_SPEED
+    end
+    
     local tween = TweenService:Create(
         instance,
         TweenInfo.new(duration or TWEEN_SPEED, style or Enum.EasingStyle.Quart, direction or Enum.EasingDirection.Out),
@@ -471,9 +476,18 @@ function SynthwaveUI:Create(title, accentColor)
             Tween(mainFrame, {Size = UDim2.new(0, 800, 0, 35)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
             
             -- Hide elements that shouldn't be visible when minimized
-            Tween(sidebar, {Transparency = 1}, 0.3)
-            Tween(contentContainer, {Transparency = 1}, 0.3)
-            Tween(bottomBar, {Transparency = 1}, 0.3)
+            for _, element in pairs({sidebar, contentContainer, bottomBar, gridBg}) do
+                if element then
+                    Tween(element, {BackgroundTransparency = 1}, 0.3)
+                    
+                    -- Also tween children to be transparent
+                    for _, child in pairs(element:GetChildren()) do
+                        if child:IsA("GuiObject") and not child:IsA("UIStroke") and not child:IsA("UICorner") then
+                            Tween(child, {BackgroundTransparency = 1}, 0.3)
+                        end
+                    end
+                end
+            end
             
             -- Make elements non-interactive when minimized
             task.delay(0.3, function()
@@ -481,6 +495,7 @@ function SynthwaveUI:Create(title, accentColor)
                     sidebar.Visible = false
                     contentContainer.Visible = false
                     bottomBar.Visible = false
+                    gridBg.Visible = false
                 end
             end)
         else
@@ -488,11 +503,33 @@ function SynthwaveUI:Create(title, accentColor)
             sidebar.Visible = true
             contentContainer.Visible = true
             bottomBar.Visible = true
+            gridBg.Visible = true
             
             -- Restore transparency
-            Tween(sidebar, {Transparency = 0}, 0.3)
-            Tween(contentContainer, {Transparency = 0}, 0.3)
-            Tween(bottomBar, {Transparency = 0}, 0.3)
+            sidebar.BackgroundTransparency = 0
+            contentContainer.BackgroundTransparency = 0
+            bottomBar.BackgroundTransparency = 0
+            gridBg.BackgroundTransparency = 1 -- Note: gridBg is already transparent by design
+            
+            -- Restore original transparency for all children
+            for _, element in pairs({sidebar, contentContainer, bottomBar, gridBg}) do
+                if element then
+                    for _, child in pairs(element:GetChildren()) do
+                        if child:IsA("GuiObject") and not child:IsA("UIStroke") and not child:IsA("UICorner") then
+                            -- Skip transparency restoration for elements that should be transparent
+                            if child.Name ~= "GridPattern" then
+                                child.BackgroundTransparency = child.Name:find("Cover") and 0 or 1
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- Ensure grid pattern is visible but transparent
+            if gridImage then
+                gridImage.BackgroundTransparency = 1
+                gridImage.ImageTransparency = 0.95
+            end
             
             -- Restore full size
             Tween(mainFrame, {Size = UDim2.new(0, 800, 0, 500)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -914,6 +951,29 @@ function SynthwaveUI:Create(title, accentColor)
                     Parent = sliderFill
                 })
                 
+                -- Add slider handle/knob (circle) for better visibility
+                local sliderHandle = Create("Frame")({
+                    Name = "SliderHandle",
+                    Parent = sliderBg,
+                    BackgroundColor3 = ColorScheme.Text,
+                    Position = UDim2.new((default - min) / (max - min), 0, 0.5, 0),
+                    Size = UDim2.new(0, 14, 0, 14),
+                    AnchorPoint = Vector2.new(0.5, 0.5),
+                    ZIndex = 2
+                })
+                
+                local handleCorner = Create("UICorner")({
+                    CornerRadius = UDim.new(1, 0),
+                    Parent = sliderHandle
+                })
+                
+                local handleStroke = Create("UIStroke")({
+                    Parent = sliderHandle,
+                    Color = ColorScheme.Accent1,
+                    Thickness = 1,
+                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                })
+                
                 local sliderButton = Create("TextButton")({
                     Name = "SliderButton",
                     Parent = slider,
@@ -940,6 +1000,8 @@ function SynthwaveUI:Create(title, accentColor)
                     sliderValue = value
                     valueLabel.Text = tostring(value)
                     sliderFill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+                    -- Update handle position to match slider value
+                    sliderHandle.Position = UDim2.new((value - min) / (max - min), 0, 0.5, 0)
                     
                     callback(value)
                 end
@@ -971,6 +1033,8 @@ function SynthwaveUI:Create(title, accentColor)
                     sliderValue = value
                     valueLabel.Text = tostring(value)
                     sliderFill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+                    -- Update handle position to match slider value
+                    sliderHandle.Position = UDim2.new((value - min) / (max - min), 0, 0.5, 0)
                     callback(value)
                 end
                 
@@ -1363,8 +1427,9 @@ function SynthwaveUI:Create(title, accentColor)
     
     -- Notification system (larger, more prominent notifications)
     function library:Notify(title, message, notifyType, duration)
-        local notifyType = notifyType or "info" -- "info", "success", "error", "warning"
-        local duration = duration or 5
+        -- Convert duration to number to ensure it's valid
+        local durationNum = tonumber(duration) or 5
+        notifyType = notifyType or "info" -- "info", "success", "error", "warning"
         
         -- Determine color based on type
         local notifyColor
@@ -1378,15 +1443,30 @@ function SynthwaveUI:Create(title, accentColor)
             notifyColor = ColorScheme.Accent1
         end
         
+        -- Create notification container if it doesn't exist
+        if not UI:FindFirstChild("NotificationContainer") then
+            local notifyContainer = Create("Frame")({
+                Name = "NotificationContainer",
+                Parent = UI,
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0.5, 0, 0, 0),
+                Size = UDim2.new(1, 0, 1, 0),
+                AnchorPoint = Vector2.new(0.5, 0),
+                ZIndex = 100
+            })
+        end
+        
+        local container = UI:FindFirstChild("NotificationContainer")
+        
         -- Create notification UI
         local notifyUI = Create("Frame")({
-            Name = "Notification",
-            Parent = UI,
+            Name = "Notification_" .. os.time(),
+            Parent = container,
             BackgroundColor3 = ColorScheme.Secondary,
             Position = UDim2.new(0.5, 0, 0, -100), -- Start off-screen
             Size = UDim2.new(0, 300, 0, 100),
             AnchorPoint = Vector2.new(0.5, 0),
-            ZIndex = 100
+            ZIndex = 101
         })
         
         local notifyCorner = Create("UICorner")({
@@ -1430,7 +1510,7 @@ function SynthwaveUI:Create(title, accentColor)
             Position = UDim2.new(0, 50, 0, 10),
             Size = UDim2.new(1, -65, 0, 20),
             Font = FONT,
-            Text = title,
+            Text = title or "",
             TextColor3 = ColorScheme.Text,
             TextSize = 18,
             TextXAlignment = Enum.TextXAlignment.Left
@@ -1443,7 +1523,7 @@ function SynthwaveUI:Create(title, accentColor)
             Position = UDim2.new(0, 50, 0, 35),
             Size = UDim2.new(1, -65, 0, 55),
             Font = REGULAR_FONT,
-            Text = message,
+            Text = message or "",
             TextColor3 = ColorScheme.Text,
             TextSize = 14,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -1461,16 +1541,24 @@ function SynthwaveUI:Create(title, accentColor)
             Text = "×",
             TextColor3 = ColorScheme.Text,
             TextSize = 20,
-            Font = FONT
+            Font = FONT,
+            ZIndex = 102
         })
         
-        closeButton.MouseButton1Click:Connect(function()
+        -- Function to close the notification
+        local function closeNotification()
             -- Animate out
-            Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, -100)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            local closeTween = Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, -100)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            
+            -- After tween completes, destroy the notification
             task.delay(0.5, function()
-                notifyUI:Destroy()
+                if notifyUI and notifyUI.Parent then
+                    notifyUI:Destroy()
+                end
             end)
-        end)
+        end
+        
+        closeButton.MouseButton1Click:Connect(closeNotification)
         
         -- Progress bar
         local progressBar = Create("Frame")({
@@ -1485,49 +1573,72 @@ function SynthwaveUI:Create(title, accentColor)
         -- Animate in
         Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, 20)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         
-        -- Progress bar animation
-        Tween(progressBar, {Size = UDim2.new(0, 0, 0, 2)}, duration)
+        -- Progress bar animation (shrinks over time)
+        local progressTween = Tween(progressBar, {Size = UDim2.new(0, 0, 0, 2)}, durationNum)
         
         -- Auto close after duration
-        task.delay(duration, function()
+        task.spawn(function()
+            task.wait(durationNum)
+            
             -- Only animate out if not already closed
             if notifyUI and notifyUI.Parent then
-                Tween(notifyUI, {Position = UDim2.new(0.5, 0, 0, -100)}, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-                task.delay(0.5, function()
-                    if notifyUI and notifyUI.Parent then
-                        notifyUI:Destroy()
-                    end
-                end)
+                closeNotification()
             end
         end)
+        
+        -- Return the notification object so it can be referenced
+        return {
+            UI = notifyUI,
+            Close = closeNotification
+        }
     end
     
     -- Toast notification system (smaller, less intrusive notifications)
     function library:Toast(message, toastType, duration)
-        -- Create toast
+        -- Convert duration to number to ensure it's valid
+        local durationNum = tonumber(duration) or TOAST_DURATION or 3
         local toastType = toastType or "Info" -- "Info", "Success", "Error", "Warning"
-        local duration = duration or TOAST_DURATION
         
         -- Determine color based on type
         local toastColor
         if toastType == "Success" then
-            toastColor = ColorScheme.Success
+            toastColor = ColorScheme.Success or Color3.fromRGB(0, 170, 126)
         elseif toastType == "Error" then
-            toastColor = ColorScheme.Error
+            toastColor = ColorScheme.Error or Color3.fromRGB(255, 61, 61)
         elseif toastType == "Warning" then
-            toastColor = ColorScheme.Warning
+            toastColor = ColorScheme.Warning or Color3.fromRGB(255, 170, 0)
         else
             toastColor = ColorScheme.Accent1
         end
         
+        -- Initialize ActiveToasts table if it doesn't exist
+        if not ActiveToasts then
+            ActiveToasts = {}
+        end
+        
+        -- Create toast container if it doesn't exist
+        if not UI:FindFirstChild("ToastContainer") then
+            local toastContainer = Create("Frame")({
+                Name = "ToastContainer",
+                Parent = UI,
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 0, 0, 0),
+                Size = UDim2.new(1, 0, 1, 0),
+                ZIndex = 95
+            })
+        end
+        
+        local container = UI:FindFirstChild("ToastContainer")
+        
         -- Create toast UI
         local toastUI = Create("Frame")({
-            Name = "Toast",
-            Parent = UI,
+            Name = "Toast_" .. os.time(),
+            Parent = container,
             BackgroundColor3 = ColorScheme.Secondary,
             Position = UDim2.new(1, 20, 0.5, 0), -- Start off-screen
             Size = UDim2.new(0, 300, 0, 80),
-            AnchorPoint = Vector2.new(0, 0.5)
+            AnchorPoint = Vector2.new(0, 0.5),
+            ZIndex = 96
         })
         
         local toastCorner = Create("UICorner")({
@@ -1584,11 +1695,25 @@ function SynthwaveUI:Create(title, accentColor)
             Position = UDim2.new(0, 50, 0, 35),
             Size = UDim2.new(1, -65, 0, 35),
             Font = REGULAR_FONT,
-            Text = message,
+            Text = message or "",
             TextColor3 = ColorScheme.Text,
             TextSize = 14,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextWrapped = true
+        })
+        
+        -- Close button
+        local closeButton = Create("TextButton")({
+            Name = "CloseButton",
+            Parent = toastUI,
+            BackgroundTransparency = 1,
+            Position = UDim2.new(1, -25, 0, 5),
+            Size = UDim2.new(0, 20, 0, 20),
+            Text = "×",
+            TextColor3 = ColorScheme.Text,
+            TextSize = 20,
+            Font = FONT,
+            ZIndex = 97
         })
         
         -- Progress bar
@@ -1601,21 +1726,8 @@ function SynthwaveUI:Create(title, accentColor)
             BorderSizePixel = 0
         })
         
-        -- Position toast and animate in
-        -- Reposition other toasts if any
-        for i, toast in ipairs(ActiveToasts) do
-            local targetPos = UDim2.new(1, -320, 0, 100 + (i * 90))
-            Tween(toast, {Position = targetPos}, 0.3)
-        end
-        
-        table.insert(ActiveToasts, 1, toastUI)
-        Tween(toastUI, {Position = UDim2.new(1, -320, 0, 100)}, 0.5, Enum.EasingStyle.Back)
-        
-        -- Progress bar animation
-        Tween(progressBar, {Size = UDim2.new(0, 0, 0, 2)}, duration)
-        
-        -- Remove toast after duration
-        task.delay(duration, function()
+        -- Function to close and remove the toast
+        local function closeToast()
             -- Find index of this toast
             local index = table.find(ActiveToasts, toastUI)
             if index then
@@ -1633,9 +1745,48 @@ function SynthwaveUI:Create(title, accentColor)
             
             -- Destroy toast after animation
             task.delay(0.5, function()
-                toastUI:Destroy()
+                if toastUI and toastUI.Parent then
+                    toastUI:Destroy()
+                end
             end)
+        end
+        
+        -- Connect close button
+        closeButton.MouseButton1Click:Connect(closeToast)
+        
+        -- Position toast and animate in
+        -- Reposition other toasts if any
+        for i, toast in ipairs(ActiveToasts) do
+            if toast and toast.Parent then
+                local targetPos = UDim2.new(1, -320, 0, 100 + (i * 90))
+                Tween(toast, {Position = targetPos}, 0.3)
+            end
+        end
+        
+        -- Insert this toast at the beginning of the active toasts list
+        table.insert(ActiveToasts, 1, toastUI)
+        
+        -- Animate in
+        Tween(toastUI, {Position = UDim2.new(1, -320, 0, 100)}, 0.5, Enum.EasingStyle.Back)
+        
+        -- Progress bar animation (shrinks over time)
+        local progressTween = Tween(progressBar, {Size = UDim2.new(0, 0, 0, 2)}, durationNum)
+        
+        -- Auto close after duration
+        task.spawn(function()
+            task.wait(durationNum)
+            
+            -- Only close if not already closed
+            if toastUI and toastUI.Parent then
+                closeToast()
+            end
         end)
+        
+        -- Return the toast object so it can be referenced
+        return {
+            UI = toastUI,
+            Close = closeToast
+        }
     end
     
     -- Return the library interface

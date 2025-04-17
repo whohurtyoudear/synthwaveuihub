@@ -1,14 +1,15 @@
 --[[
-    Nebula UI Library v2.0
-    Modern Synthwave Theme
+    Nebula UI Library v2.2
+    Complete Synthwave UI Library for Roblox
     Features:
-    - Cross-platform (PC/Mobile) support
-    - Modern wide design with synthwave aesthetics
-    - Player dashboard with avatar and game info
-    - Full suite of UI elements
-    - Customizable theme system
-    - Smooth animations
-    - No nil value errors
+    - Fixed all PlaceMaxPlayers/MarketplaceService errors
+    - Modern wide design with neon aesthetics
+    - Player dashboard with avatar + game info
+    - Toggles, sliders, dropdowns, keybinds, buttons
+    - Notification system
+    - Fully draggable with minimize/close
+    - Works on PC + Mobile
+    - No nil errors
 ]]
 
 local NebulaUI = {}
@@ -18,6 +19,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TextService = game:GetService("TextService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 -- Constants
 local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
@@ -59,9 +61,12 @@ local function Round(num, decimalPlaces)
     return math.floor(num * mult + 0.5) / mult
 end
 
-local function Tween(instance, properties, tweenInfo)
+local function Tween(instance, properties, tweenInfo, callback)
     local tween = TweenService:Create(instance, tweenInfo or DEFAULT_TWEEN_INFO, properties)
     tween:Play()
+    if callback then
+        tween.Completed:Connect(callback)
+    end
     return tween
 end
 
@@ -88,7 +93,8 @@ function NebulaUI:CreateWindow(title, options)
         Closed = false,
         Dragging = false,
         DragStart = nil,
-        LastPosition = position
+        LastPosition = position,
+        Notifications = {}
     }
     
     -- ScreenGui container
@@ -286,13 +292,19 @@ function NebulaUI:CreateWindow(title, options)
         Parent = GameInfo
     })
     
-    -- Game title
+    -- Game title (with error handling)
+    local gameName = "Unknown Game"
+    local success, result = pcall(function()
+        return MarketplaceService:GetProductInfo(game.PlaceId).Name
+    end)
+    if success then gameName = result end
+    
     local GameTitle = Create("TextLabel", {
         Name = "GameTitle",
         Size = UDim2.new(1, -20, 0, 30),
         Position = UDim2.new(0, 10, 0, 10),
         BackgroundTransparency = 1,
-        Text = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name,
+        Text = gameName,
         TextColor3 = theme.Text,
         TextSize = 18,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -300,13 +312,18 @@ function NebulaUI:CreateWindow(title, options)
         Parent = GameInfo
     })
     
-    -- Server info
+    -- Server info (with error handling for UGC games)
+    local serverInfoText = "Server: "..game.JobId.." | Players: "..#Players:GetPlayers()
+    if pcall(function() return game.PlaceMaxPlayers end) then
+        serverInfoText = serverInfoText.."/"..game.PlaceMaxPlayers
+    end
+
     local ServerInfo = Create("TextLabel", {
         Name = "ServerInfo",
         Size = UDim2.new(1, -20, 0, 20),
         Position = UDim2.new(0, 10, 0, 40),
         BackgroundTransparency = 1,
-        Text = "Server: " .. game.JobId .. " | Players: " .. #Players:GetPlayers() .. "/" .. game.PlaceMaxPlayers,
+        Text = serverInfoText,
         TextColor3 = theme.Text,
         TextTransparency = 0.5,
         TextSize = 14,
@@ -321,7 +338,7 @@ function NebulaUI:CreateWindow(title, options)
         Size = UDim2.new(1, -20, 0, 20),
         Position = UDim2.new(0, 10, 0, 60),
         BackgroundTransparency = 1,
-        Text = "Place ID: " .. game.PlaceId,
+        Text = "Place ID: "..game.PlaceId,
         TextColor3 = theme.Text,
         TextTransparency = 0.5,
         TextSize = 14,
@@ -393,6 +410,9 @@ function NebulaUI:CreateWindow(title, options)
         for _, tab in pairs(Window.Tabs) do
             if tab.Container then
                 tab.Container.BackgroundColor3 = theme.Background
+            end
+            if tab.Button then
+                tab.Button.BackgroundColor3 = (Window.CurrentTab == tab) and theme.Primary or theme.Secondary
             end
         end
     end

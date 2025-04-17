@@ -141,10 +141,10 @@ function SynthwaveUI:Create(title, accentColor)
         Parent = UI,
         BackgroundColor3 = ColorScheme.Background,
         BorderSizePixel = 0,
-        Position = UDim2.new(0.5, -400, 0.5, -250),
+        Position = UDim2.new(0.5, 0, 0.5, 0), -- Center position
         Size = UDim2.new(0, 800, 0, 500),
         ClipsDescendants = true,
-        AnchorPoint = Vector2.new(0.5, 0.5)
+        AnchorPoint = Vector2.new(0.5, 0.5) -- Center anchor point
     })
 
     local mainCorner = Create("UICorner")({
@@ -400,43 +400,54 @@ function SynthwaveUI:Create(title, accentColor)
     local dragStart
     local startPos
 
+    -- Improved drag function for better reliability
     local function UpdateDrag(input)
-        local delta = input.Position - dragStart
-        local newPosition = UDim2.new(
-            startPos.X.Scale, 
-            startPos.X.Offset + delta.X, 
-            startPos.Y.Scale, 
-            startPos.Y.Offset + delta.Y
-        )
-        
-        mainFrame.Position = newPosition
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(
+                startPos.X.Scale, 
+                startPos.X.Offset + delta.X, 
+                startPos.Y.Scale, 
+                startPos.Y.Offset + delta.Y
+            )
+        end
     end
 
+    -- Improved dragging implementation for reliable dragging in Roblox
     topBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
             startPos = mainFrame.Position
-
-
-
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+            
+            -- Create connection to track mouse movement
+            local dragConnection
+            local endConnection
+            
+            dragConnection = UserInputService.InputChanged:Connect(function(changedInput)
+                if dragging and changedInput.UserInputType == Enum.UserInputType.MouseMovement then
+                    local delta = changedInput.Position - dragStart
+                    mainFrame.Position = UDim2.new(
+                        startPos.X.Scale, 
+                        startPos.X.Offset + delta.X, 
+                        startPos.Y.Scale, 
+                        startPos.Y.Offset + delta.Y
+                    )
                 end
             end)
-        end
-    end)
-
-    topBar.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            UpdateDrag(input)
+            
+            -- Handle when mouse button is released
+            endConnection = UserInputService.InputEnded:Connect(function(endedInput)
+                if endedInput.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = false
+                    if dragConnection then 
+                        dragConnection:Disconnect()
+                    end
+                    if endConnection then
+                        endConnection:Disconnect()
+                    end
+                end
+            end)
         end
     end)
 
@@ -444,7 +455,7 @@ function SynthwaveUI:Create(title, accentColor)
     closeBtn.MouseButton1Click:Connect(function()
         CreateRipple(closeBtn)
         Tween(blur, {Size = 0}, 0.5)
-        Tween(mainFrame, {Position = UDim2.new(0.5, -400, 1.5, 0)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        Tween(mainFrame, {Position = UDim2.new(0.5, 0, 1.5, 0)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
         task.wait(0.5)
         UI:Destroy()
         blur:Destroy()
@@ -580,7 +591,11 @@ function SynthwaveUI:Create(title, accentColor)
         
         -- If this is the first tab, select it automatically
         if #library.Tabs == 1 then
-            tabButton.MouseButton1Click:Fire()
+            -- Manually trigger the tab selection logic instead of trying to fire the event
+            tabContent.Visible = true
+            Tween(tabButton, {BackgroundColor3 = ColorScheme.Accent1})
+            Tween(tabStroke, {Transparency = 0})
+            SelectedTab = title
         end
         
         -- Section Creator
